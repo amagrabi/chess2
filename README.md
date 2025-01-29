@@ -1,6 +1,6 @@
 # Chess 2
 
-Chess is amazing, but the last patch was over 100 years ago, so I've made some much-needed improvements:
+Chess is awesome, but the last patch was over 100 years ago, so here are some much-needed improvements:
 
 * Knights now jump in all directions, because real horses stopped using L-shaped movement centuries ago.
 * Stalemate is no longer a draw. If you can't move, that's a you problem. Your opponent gets another turn.
@@ -34,9 +34,7 @@ Install dev dependencies:
 pip install -r requirements.lock -e ".[dev]"
 ```
 
-Creating Mac/Windows executables:
+Creating Mac/Windows executables into `/dist` for releases:
 ```sh
 pyinstaller chess2.spec
 ```
-
-Find executables at `/dist`.
