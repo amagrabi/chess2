@@ -1,5 +1,7 @@
 # Chess 2
 
+![Demo](assets/demo.gif)
+
 Chess is awesome, but the last patch was over 100 years ago, so here are some much-needed improvements:
 
 * Knights now jump in all directions, because real horses stopped using L-shaped movement centuries ago.
