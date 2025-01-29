@@ -288,7 +288,19 @@ class ChessBoard:
         return moves
 
     def _get_queen_moves(self, pos: Tuple[int, int]) -> Set[Tuple[int, int]]:
-        return self._get_bishop_moves(pos).union(self._get_rook_moves(pos))
+        moves = set()
+        piece = self.get_piece(pos)
+        if not piece:
+            return moves
+
+        # Get diagonal moves (without bishop's queen-capture restriction)
+        directions = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+        for dr, dc in directions:
+            moves.update(self._get_sliding_moves(pos, dr, dc))
+
+        # Add rook moves
+        moves.update(self._get_rook_moves(pos))
+        return moves
 
     def _get_king_moves(
         self, pos: Tuple[int, int], check_castling: bool
