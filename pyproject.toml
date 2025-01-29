@@ -1,0 +1,16 @@
+[project]
+name = "chess2"
+version = "0.1.0"
+authors = [
+  {name = "Amadeus Magrabi"},
+]
+description = "Chess 2"
+keywords = ["chess"]
+dependencies = [
+    "pygame",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff",
+]
