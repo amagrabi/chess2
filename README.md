@@ -5,7 +5,7 @@ Chess is amazing, but the last patch was over 100 years ago, so I've made some m
 * Knights now jump in all directions, because real horses stopped using L-shaped movement centuries ago.
 * Stalemate is no longer a draw. If you can't move, that's a you problem. Your opponent gets another turn.
 * Bishops can no longer capture queens. Feels wrong.
-* Added a new piece on h2/h7, the spy. Moves like a knight, but converts enemy pieces instead of capturing them.
+* Added a new piece on h2/h7, the spy. Moves like a knight, but converts enemy pieces instead of capturing them. Can only convert once and dies in the process.
 * *Ėń pãşšãñţ*  has been disabled, so nobody ever has to spell it again.
 * Pawns can now move and capture both forwards and diagonally, like normal people. But they still can't move backwards. That would be ridiculous.
 * Fixed a bug where computers were better at chess than humans.
