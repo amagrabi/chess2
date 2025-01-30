@@ -8,7 +8,10 @@ from game.state import GameState
 from gui.renderer import GUIRenderer
 
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
+
 
 class ChessApp:
     def __init__(self, width: int = 800, height: int = 800):
@@ -48,12 +51,12 @@ class ChessApp:
         if event.type == MOUSEBUTTONDOWN and event.button == 1:
             logging.debug(f"Mouse button down event at {pygame.mouse.get_pos()}")
             self._handle_mouse_down(pygame.mouse.get_pos())
-        
+
         elif event.type == MOUSEMOTION and event.buttons[0]:
-            logging.debug(f"Mouse dragging started")
+            logging.debug("Mouse dragging started")
             if self.state.selected_piece:
                 self.state.dragging = True
-        
+
         elif event.type == MOUSEBUTTONUP and event.button == 1:
             logging.debug(f"Mouse button up event at {pygame.mouse.get_pos()}")
             self._handle_mouse_up(pygame.mouse.get_pos())
@@ -67,7 +70,9 @@ class ChessApp:
         if self.state.selected_piece is not None:
             # If clicking on a valid target square, make the move
             if square in self.state.possible_moves:
-                logging.info(f"Making move from {self.state.selected_piece} to {square} (two-click)")
+                logging.info(
+                    f"Making move from {self.state.selected_piece} to {square} (two-click)"
+                )
                 if self.state.make_move(self.state.selected_piece, square):
                     self._trigger_computer_move()
             # Reset selection
@@ -92,7 +97,9 @@ class ChessApp:
         end_square = self._pos_to_square(pos)
         logging.debug(f"Mouse up at {pos}, converted to square {end_square}")
         if self.state.selected_piece and end_square in self.state.possible_moves:
-            logging.info(f"Making move from {self.state.selected_piece} to {end_square} (drag)")
+            logging.info(
+                f"Making move from {self.state.selected_piece} to {end_square} (drag)"
+            )
             if self.state.make_move(self.state.selected_piece, end_square):
                 self._trigger_computer_move()
 
@@ -134,9 +141,11 @@ class ChessApp:
         x, y = pos
         return (y // self.renderer.square_size, x // self.renderer.square_size)
 
+
 def main():
     app = ChessApp()
     app.run()
+
 
 if __name__ == "__main__":
     main()

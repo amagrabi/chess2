@@ -1,6 +1,7 @@
 from enum import Enum, auto
 from dataclasses import dataclass
 
+
 class PieceType(Enum):
     PAWN = auto()
     KNIGHT = auto()
@@ -9,6 +10,7 @@ class PieceType(Enum):
     QUEEN = auto()
     KING = auto()
     SPY = auto()
+
 
 @dataclass
 class Piece:
@@ -32,6 +34,6 @@ class Piece:
             (PieceType.ROOK, False): "♜",
             (PieceType.QUEEN, False): "♛",
             (PieceType.KING, False): "♚",
-            (PieceType.SPY, False): "⌖",  
+            (PieceType.SPY, False): "⌖",
         }
         return symbols[(self.type, self.is_white)]

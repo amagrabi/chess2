@@ -6,7 +6,9 @@ import logging
 
 class ChessBoard:
     def __init__(self):
-        self.board: List[List[Optional[Piece]]] = [[None for _ in range(8)] for _ in range(8)]
+        self.board: List[List[Optional[Piece]]] = [
+            [None for _ in range(8)] for _ in range(8)
+        ]
         self._initialize_board()
 
     def _initialize_board(self):
@@ -15,10 +17,10 @@ class ChessBoard:
             if col != 7:  # Skip h2/h7 as those will have spies
                 self.board[1][col] = Piece(PieceType.PAWN, False)
                 self.board[6][col] = Piece(PieceType.PAWN, True)
-        
+
         # Add the displaced h-pawns one row further
         self.board[2][7] = Piece(PieceType.PAWN, False)  # h3
-        self.board[5][7] = Piece(PieceType.PAWN, True)   # h6
+        self.board[5][7] = Piece(PieceType.PAWN, True)  # h6
 
         # Initialize back rows
         back_row = [
@@ -38,7 +40,7 @@ class ChessBoard:
 
         # Add spies at h2/h7
         self.board[1][7] = Piece(PieceType.SPY, False)  # h2
-        self.board[6][7] = Piece(PieceType.SPY, True)   # h7
+        self.board[6][7] = Piece(PieceType.SPY, True)  # h7
 
     def get_piece(self, pos: Tuple[int, int]) -> Optional[Piece]:
         row, col = pos
@@ -105,7 +107,7 @@ class ChessBoard:
                 # Allow both movement and capture in all forward directions
                 if not target or target.is_white != piece.is_white:
                     moves.add((new_row, new_col))
-        
+
         # Initial two-square forward move
         if (piece.is_white and row == 6) or (not piece.is_white and row == 1):
             two_forward = row + 2 * forward
