@@ -29,45 +29,30 @@ def test_black_checkmate(fresh_state):  # Adapted fool's mate
     # Black queen to g3 (checkmate)
     assert state.make_move((4, 7), (5, 6))
 
-    assert state.is_white_turn, "Should be white's turn"
-    assert state.game_over, "Game should be over"
+    assert state.is_white_turn
+    assert state.game_over
     assert state.game_result == "black_wins"
 
 
-def test_stalemate_continues(fresh_state):
-    """Test stalemate doesn't result in draw (per README rules)"""
-    board = fresh_state.board
-    # Clear all pieces
-    board.board = [[None for _ in range(8)] for _ in range(8)]
-    # Set up stalemate position
-    board.board[0][0] = Piece(PieceType.KING, True)
-    board.board[2][1] = Piece(PieceType.QUEEN, False)
-    board.board[1][2] = Piece(PieceType.ROOK, False)
-
-    fresh_state.is_white_turn = True
-    assert not fresh_state.board.has_legal_moves(True)
-    assert not fresh_state.game_over
-
-
 def test_threefold_repetition(fresh_state):
-    """Test threefold repetition results in draw"""
-    # Clear pawns first
-    fresh_state.board.board[6] = [None] * 8  # Clear white pawns
-    fresh_state.board.board[1] = [None] * 8  # Clear black pawns
+    """Test that threefold repetition ends game with draw"""
+    state = fresh_state
 
-    # Perform 3 complete cycles
     for _ in range(3):
-        # White knight moves
-        assert fresh_state.make_move((7, 1), (5, 2)), "White knight move failed"
-        # Black knight moves
-        assert fresh_state.make_move((0, 1), (2, 2)), "Black knight move failed"
-        # White knight returns
-        assert fresh_state.make_move((5, 2), (7, 1)), "White knight return failed"
-        # Black knight returns
-        assert fresh_state.make_move((2, 2), (0, 1)), "Black knight return failed"
+        assert state.is_white_turn
+        assert not state.game_over
 
-    assert fresh_state.game_over, "Game should end in draw"
-    assert fresh_state.game_result == "draw"
+        # White knight to g3
+        assert state.make_move((7, 6), (5, 6))
+        # Black knight to g6
+        assert state.make_move((0, 6), (2, 6))
+        # White knight back to g1
+        assert state.make_move((5, 6), (7, 6))
+        # Black knight back to g8
+        assert state.make_move((2, 6), (0, 6))
+
+    assert state.game_result == "draw"
+    assert state.game_over
 
 
 def test_bishop_cannot_capture_queen():
@@ -80,3 +65,28 @@ def test_bishop_cannot_capture_queen():
 
     moves = state.get_legal_moves((3, 3))
     assert (4, 4) not in moves  # Bishop shouldn't be able to capture queen
+
+
+def test_stalemate_switches_turn(fresh_state):
+    """Test stalemate switches turn instead of ending game"""
+    state = fresh_state
+    board = state.board
+    
+    # Clear board and set up stalemate position
+    for row in range(8):
+        for col in range(8):
+            board.board[row][col] = None
+    
+    # Black king in corner
+    board.board[0][0] = Piece(PieceType.KING, False)
+    # White pieces surrounding but not attacking
+    board.board[2][0] = Piece(PieceType.KING, True)
+    board.board[1][2] = Piece(PieceType.QUEEN, True)
+    
+    # White makes a move that doesn't resolve the stalemate
+    assert state.make_move((2, 0), (2, 1))  # White king moves right
+    
+    # Should switch turn to black, then back to white due to stalemate
+    assert state.is_white_turn
+    assert not state.game_over
+    assert state.game_result is None
