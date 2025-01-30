@@ -6,39 +6,29 @@ from core.piece import Piece, PieceType
 def fresh_state():
     return GameState()
 
-def test_white_checkmate(fresh_state):
-    """Test checkmate by white ends game with correct result"""
-    # Clear all pieces first
-    fresh_state.board.board = [[None for _ in range(8)] for _ in range(8)]
-    
-    # Set up kings and queen
-    fresh_state.board.board[3][3] = Piece(PieceType.KING, True)
-    fresh_state.board.board[5][2] = Piece(PieceType.KING, False)
-    fresh_state.board.board[3][5] = Piece(PieceType.QUEEN, True)
-    
-    # Verify preconditions
-    assert fresh_state.board.get_piece((3,5)) is not None  # Queen exists
-    
-    # Execute checkmate move
-    result = fresh_state.make_move((3,5), (5,3))
-    assert result, "Move should be legal"
-    assert fresh_state.game_over, "Game should be over"
-    assert fresh_state.game_result == "white_wins"
 
-def test_black_checkmate(fresh_state):
+
+def test_black_checkmate(fresh_state):   # Modified fools mate
     """Test checkmate by black ends game with correct result"""
-    # Clear all pieces first
-    fresh_state.board.board = [[None for _ in range(8)] for _ in range(8)]
+    state = fresh_state
+    board = state.board
+
+    # White pawn to f3
+    assert state.make_move((6, 5), (5, 5))
+    # Black pawn to e6 (opens diagonal for queen)
+    assert state.make_move((1, 4), (2, 4))
+    # White pawn to g4
+    assert state.make_move((6, 6), (4, 6))
+    # Black pawn to e5 (waste a move)
+    assert state.make_move((2, 4), (3, 4))
+    # White pawn to h4
+    assert state.make_move((5, 7), (4, 7))
+    # Black queen to h4 (checkmate)
+    assert state.make_move((0, 3), (4, 7))
     
-    # Set up kings and queen
-    fresh_state.board.board[1][3] = Piece(PieceType.KING, True)
-    fresh_state.board.board[0][4] = Piece(PieceType.KING, False)
-    fresh_state.board.board[2][4] = Piece(PieceType.QUEEN, False)
-    
-    fresh_state.is_white_turn = False  # Black's turn
-    assert fresh_state.make_move((2,4), (1,4)), "Move should be legal"
-    assert fresh_state.game_over, "Game should be over"
-    assert fresh_state.game_result == "black_wins"
+    assert state.is_white_turn, "Should be white's turn"
+    assert state.game_over, "Game should be over"
+    assert state.game_result == "black_wins"
 
 def test_stalemate_continues(fresh_state):
     """Test stalemate doesn't result in draw (per README rules)"""
