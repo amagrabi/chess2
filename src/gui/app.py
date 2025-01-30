@@ -3,8 +3,8 @@ import pygame
 import sys
 import random
 from pygame.locals import *
-from src.game.state import GameState
-from src.gui.renderer import GUIRenderer
+from game.state import GameState
+from gui.renderer import GUIRenderer
 
 class ChessApp:
     def __init__(self, width: int = 800, height: int = 800):
@@ -116,6 +116,9 @@ class ChessApp:
         x, y = pos
         return (y // self.renderer.square_size, x // self.renderer.square_size)
 
-if __name__ == "__main__":
+def main():
     app = ChessApp()
     app.run()
+
+if __name__ == "__main__":
+    main()

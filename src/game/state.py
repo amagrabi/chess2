@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import Tuple, Optional, Dict, Set, List
-from src.core.board import ChessBoard
-from src.core.piece import Piece, PieceType
+from core.board import ChessBoard
+from core.piece import Piece, PieceType
 
 class GameState:
     def __init__(self):

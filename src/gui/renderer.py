@@ -1,8 +1,8 @@
 import pygame
 from typing import Tuple, Set
-from src.core.piece import Piece
-from src.game.state import GameState
-from src.utils import _resource_path
+from core.piece import Piece
+from game.state import GameState
+from utils import _resource_path
 
 class GUIRenderer:
     COLORS = {

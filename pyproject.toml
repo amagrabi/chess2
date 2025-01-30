@@ -1,17 +1,29 @@
 [project]
 name = "chess2"
 version = "0.1.0"
+requires-python = ">=3.8"
 authors = [
   {name = "Amadeus Magrabi"},
 ]
 description = "Chess 2"
+readme = "README.md"
 keywords = ["chess"]
 dependencies = [
     "pygame",
 ]
+
+[project.scripts]
+chess2 = "gui.app:main"
 
 [project.optional-dependencies]
 dev = [
     "ruff",
     "pyinstaller",
 ]
+
+[tool.setuptools.package-data]
+"*" = ["src/assets/*"]
+
+[project.urls]
+Repository = "https://github.com/amagrabi/chess2"
+Releases = "https://github.com/amagrabi/chess2/releases"

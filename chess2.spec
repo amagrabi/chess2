@@ -3,11 +3,11 @@
 block_cipher = None
 
 a = Analysis(
-    ['src/play.py'],
+    ['src/gui/app.py'],
     pathex=[],
     binaries=[],
-    datas=[('assets/*', 'assets')],  # Include the assets directory
-    hiddenimports=[],
+    datas=[('src/assets/*', 'assets/')],  # Make sure trailing slash is included
+    hiddenimports=['pygame'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -35,13 +35,13 @@ exe = EXE(
     upx_exclude=[],
     runtime_tmpdir=None,
     console=False,  # Set to False for no console window
-    icon='assets/icon.ico'  # Make sure this path is correct
+    icon='src/assets/icon.ico'
 )
 
 # For macOS
 app = BUNDLE(
     exe,
     name='Chess2.app',
-    icon='assets/icon.icns',  # Make sure this path is correct
-    bundle_identifier='com.chess2'  # Simplified identifier
+    icon='src/assets/icon.icns',
+    bundle_identifier='com.chess2'
 ) 

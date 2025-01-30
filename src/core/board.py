@@ -1,5 +1,5 @@
 from typing import List, Tuple, Optional, Set
-from src.core.piece import Piece, PieceType
+from core.piece import Piece, PieceType
 
 class ChessBoard:
     def __init__(self):
