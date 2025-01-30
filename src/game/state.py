@@ -66,21 +66,16 @@ class GameState:
             self.board.board[end[0]][end[1]] = Piece(PieceType.QUEEN, piece.is_white)
 
     def _update_game_status(self, moved_piece: Piece):
-        # Check checkmate
         opponent_color = not moved_piece.is_white
         if not self.board.has_legal_moves(opponent_color):
             if self.board.is_in_check(opponent_color):
-                logging.info(
-                    f"{'White' if moved_piece.is_white else 'Black'} wins by checkmate"
-                )
+                # Checkmate handling
                 self.game_over = True
-                self.game_result = (
-                    "white_wins" if moved_piece.is_white else "black_wins"
-                )
+                self.game_result = "white_wins" if moved_piece.is_white else "black_wins"
             else:
-                logging.info("Stalemate. Game is a draw")
-                self.game_over = True
-                self.game_result = "draw"
+                # Stalemate - continue game without ending
+                self.is_white_turn = not self.is_white_turn
+                # Do NOT set game_over or game_result
 
         # Threefold repetition
         new_position = self._get_position_string()
@@ -96,10 +91,11 @@ class GameState:
             return set()
 
         legal_moves = set()
-        potential_moves = self.board.get_moves(pos)
+        # Use pseudo-legal moves for initial validation
+        potential_moves = self.board.get_pseudo_legal_moves(pos)
 
         for move in potential_moves:
-            # Simulate move
+            # Full validation with board simulation
             original_piece = self.board.board[move[0]][move[1]]
             self.board.board[move[0]][move[1]] = piece
             self.board.board[pos[0]][pos[1]] = None
@@ -107,7 +103,7 @@ class GameState:
             if not self.board.is_in_check(piece.is_white):
                 legal_moves.add(move)
 
-            # Restore board
+            # Restore board state
             self.board.board[pos[0]][pos[1]] = piece
             self.board.board[move[0]][move[1]] = original_piece
 
