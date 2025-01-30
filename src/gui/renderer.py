@@ -8,14 +8,14 @@ from utils import _resource_path
 class GUIRenderer:
     COLORS = {
         "background": (255, 255, 255),
-        "dark_square": (181, 136, 99),
-        "light_square": (230, 207, 171),
-        "legal_moves": (100, 150, 100),
-        "last_move": (130, 170, 130),
+        "dark_square": (136, 90, 56),
+        "light_square": (203, 174, 122),
+        "legal_moves": (120, 140, 40),
+        "last_move": (220, 205, 33),
         "white_piece": (255, 255, 255),
         "black_piece": (0, 0, 0),
         "text": (0, 0, 0),
-        "labels": (100, 100, 100),
+        "labels": (70, 70, 70),
     }
 
     def __init__(self, screen_width: int, screen_height: int):
@@ -168,7 +168,7 @@ class GUIRenderer:
         texts = {
             "white_wins": "Checkmate, you win!",
             "black_wins": "Checkmate, you lose!",
-            "draw": "Draw!",
+            "draw": "Draw by threefold repetition!",
         }
         text = self.game_over_font.render(
             texts[state.game_result], True, self.COLORS["text"]
