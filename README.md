@@ -1,6 +1,8 @@
 # Chess 2
 
-![Demo](assets/demo.gif)
+<p align="center">
+    <img width="400" height="400" src="assets/demo.gif" alt="Demo">
+</p>
 
 Chess is awesome, but the last patch was over 100 years ago, so here are some much-needed improvements:
 
