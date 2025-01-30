@@ -17,6 +17,7 @@ chess2 = "gui.app:main"
 
 [project.optional-dependencies]
 dev = [
+    "pytest",
     "ruff",
     "pyinstaller",
 ]

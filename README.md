@@ -18,13 +18,11 @@ The last patch for chess was probably shipped over 100 years ago, so it's time f
 ## Installation
 
 Create a virtual environment and install dependencies in editable mode:
-
 ```sh
 pip install -e .
 ```
 
 Start game:
-
 ```sh
 chess2
 ```
@@ -34,9 +32,13 @@ You play against a randomizing AI. Press `Esc` to restart the game.
 ## Development
 
 Install dev dependencies:
-
 ```sh
 pip install -e ".[dev]"
+```
+
+Run tests:
+```sh
+pytest tests/
 ```
 
 Creating Mac/Windows executables into `/dist` for releases:
