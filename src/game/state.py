@@ -68,10 +68,12 @@ class GameState:
     def _update_game_status(self, moved_piece: Piece):
         # Check checkmate
         opponent_color = not moved_piece.is_white
-        logging.debug(f"Checking game status after move by {'white' if moved_piece.is_white else 'black'}")
+        logging.debug(
+            f"Checking game status after move by {'white' if moved_piece.is_white else 'black'}"
+        )
         logging.debug(f"has_legal_moves: {self.board.has_legal_moves(opponent_color)}")
         logging.debug(f"is_in_check: {self.board.is_in_check(opponent_color)}")
-        
+
         if not self.board.has_legal_moves(opponent_color):
             if self.board.is_in_check(opponent_color):
                 logging.info(
