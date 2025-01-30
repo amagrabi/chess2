@@ -168,7 +168,7 @@ class GUIRenderer:
         texts = {
             "white_wins": "Checkmate, you win!",
             "black_wins": "Checkmate, you lose!",
-            "draw": "Draw due to 3-fold repetition!",
+            "draw": "Draw!",
         }
         text = self.game_over_font.render(
             texts[state.game_result], True, self.COLORS["text"]

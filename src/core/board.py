@@ -50,7 +50,7 @@ class ChessBoard:
 
     def move_piece(
         self, start: Tuple[int, int], end: Tuple[int, int], convert: bool = False
-    ) -> None:
+    ):
         piece = self.board[start[0]][start[1]]
         if piece:
             if convert:
@@ -234,8 +234,19 @@ class ChessBoard:
         return moves
 
     def _get_queen_moves(self, pos: Tuple[int, int]) -> Set[Tuple[int, int]]:
-        """Combine rook and bishop moves without capture restrictions"""
-        return self._get_rook_moves(pos).union(self._get_bishop_moves(pos))
+        moves = set()
+        piece = self.get_piece(pos)
+        if not piece:
+            return moves
+
+        # Get diagonal moves (without bishop's queen-capture restriction)
+        directions = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+        for dr, dc in directions:
+            moves.update(self._get_sliding_moves(pos, dr, dc))
+
+        # Add rook moves
+        moves.update(self._get_rook_moves(pos))
+        return moves
 
     def _get_king_moves(
         self, pos: Tuple[int, int], check_castling: bool
@@ -246,15 +257,6 @@ class ChessBoard:
         if not piece:
             return moves
 
-        # Find opponent king position
-        opponent_king_pos = None
-        for r in range(8):
-            for c in range(8):
-                p = self.get_piece((r, c))
-                if p and p.type == PieceType.KING and p.is_white != piece.is_white:
-                    opponent_king_pos = (r, c)
-                    break
-
         # Normal king moves
         for dr in [-1, 0, 1]:
             for dc in [-1, 0, 1]:
@@ -262,11 +264,6 @@ class ChessBoard:
                     continue
                 new_row, new_col = row + dr, col + dc
                 if self._is_valid_position((new_row, new_col)):
-                    # Check distance to opponent king
-                    if opponent_king_pos:
-                        op_row, op_col = opponent_king_pos
-                        if abs(new_row - op_row) <= 1 and abs(new_col - op_col) <= 1:
-                            continue
                     target = self.get_piece((new_row, new_col))
                     if not target or target.is_white != piece.is_white:
                         moves.add((new_row, new_col))
@@ -328,7 +325,7 @@ class ChessBoard:
             for c in range(8):
                 piece = self.get_piece((r, c))
                 if piece and piece.is_white == by_white:
-                    if pos in self.get_pseudo_legal_moves((r, c)):
+                    if pos in self.get_moves((r, c), check_castling=False):
                         return True
         return False
 
@@ -384,7 +381,7 @@ class ChessBoard:
             for c in range(8):
                 piece = self.get_piece((r, c))
                 if piece and piece.is_white != is_white:
-                    if king_pos in self.get_pseudo_legal_moves((r, c)):
+                    if king_pos in self.get_moves((r, c)):
                         return True
         return False
 
@@ -393,39 +390,19 @@ class ChessBoard:
             for c in range(8):
                 piece = self.get_piece((r, c))
                 if piece and piece.is_white == is_white:
-                    # Use pseudo-legal moves for full validation
-                    for move in self.get_pseudo_legal_moves((r, c)):
-                        # Temporary move simulation
-                        original_piece = self.board[move[0]][move[1]]
+                    possible_moves = self.get_moves((r, c))
+                    for move in possible_moves:
+                        # Try move and check if it leaves king in check
+                        temp_piece = self.board[move[0]][move[1]]
                         self.board[move[0]][move[1]] = piece
                         self.board[r][c] = None
-                        
-                        valid = not self.is_in_check(is_white)
-                        
+
+                        in_check = self.is_in_check(is_white)
+
                         # Restore board
                         self.board[r][c] = piece
-                        self.board[move[0]][move[1]] = original_piece
-                        
-                        if valid:
+                        self.board[move[0]][move[1]] = temp_piece
+
+                        if not in_check:
                             return True
         return False
-
-    def get_pseudo_legal_moves(self, pos: Tuple[int, int]) -> Set[Tuple[int, int]]:
-        piece = self.get_piece(pos)
-        if not piece:
-            return set()
-            
-        if piece.type == PieceType.PAWN:
-            return self._get_pawn_moves(pos)
-        if piece.type == PieceType.KNIGHT:
-            return self._get_knight_moves(pos)
-        if piece.type == PieceType.BISHOP:
-            return self._get_bishop_moves(pos)
-        if piece.type == PieceType.ROOK:
-            return self._get_rook_moves(pos)
-        if piece.type == PieceType.QUEEN:
-            return self._get_queen_moves(pos)
-        if piece.type == PieceType.KING:
-            return self._get_king_moves(pos, check_castling=False)
-            
-        return set()

@@ -66,6 +66,7 @@ class GameState:
             self.board.board[end[0]][end[1]] = Piece(PieceType.QUEEN, piece.is_white)
 
     def _update_game_status(self, moved_piece: Piece):
+        # Check checkmate
         opponent_color = not moved_piece.is_white
         logging.debug(f"Checking game status after move by {'white' if moved_piece.is_white else 'black'}")
         logging.debug(f"has_legal_moves: {self.board.has_legal_moves(opponent_color)}")
@@ -73,9 +74,13 @@ class GameState:
         
         if not self.board.has_legal_moves(opponent_color):
             if self.board.is_in_check(opponent_color):
-                # Checkmate handling
+                logging.info(
+                    f"{'White' if moved_piece.is_white else 'Black'} wins by checkmate"
+                )
                 self.game_over = True
-                self.game_result = "white_wins" if moved_piece.is_white else "black_wins"
+                self.game_result = (
+                    "white_wins" if moved_piece.is_white else "black_wins"
+                )
             else:
                 # Stalemate - continue game without ending
                 self.is_white_turn = not self.is_white_turn
@@ -94,11 +99,10 @@ class GameState:
             return set()
 
         legal_moves = set()
-        # Use pseudo-legal moves for initial validation
-        potential_moves = self.board.get_pseudo_legal_moves(pos)
+        potential_moves = self.board.get_moves(pos)
 
         for move in potential_moves:
-            # Full validation with board simulation
+            # Simulate move
             original_piece = self.board.board[move[0]][move[1]]
             self.board.board[move[0]][move[1]] = piece
             self.board.board[pos[0]][pos[1]] = None
@@ -106,7 +110,7 @@ class GameState:
             if not self.board.is_in_check(piece.is_white):
                 legal_moves.add(move)
 
-            # Restore board state
+            # Restore board
             self.board.board[pos[0]][pos[1]] = piece
             self.board.board[move[0]][move[1]] = original_piece
 
