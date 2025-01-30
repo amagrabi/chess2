@@ -15,6 +15,7 @@ class GUIRenderer:
         "white_piece": (255, 255, 255),
         "black_piece": (0, 0, 0),
         "text": (0, 0, 0),
+        "labels": (100, 100, 100),
     }
 
     def __init__(self, screen_width: int, screen_height: int):
@@ -37,6 +38,7 @@ class GUIRenderer:
         self._draw_pieces(screen, state)
         if state.game_over:
             self._draw_game_over(screen, state)
+        self._draw_labels(screen)
 
     def _draw_board(self, screen: pygame.Surface):
         for row in range(8):
@@ -132,6 +134,31 @@ class GUIRenderer:
         mouse_pos = pygame.mouse.get_pos()
         text_rect = text_surface.get_rect(center=mouse_pos)
         screen.blit(text_surface, text_rect)
+
+    def _draw_labels(self, screen: pygame.Surface):
+        label_font = pygame.font.Font(None, 16)
+        for row in range(8):
+            for col in range(8):
+                if row == 7:
+                    label = chr(ord("a") + col)
+                    text_surface = label_font.render(label, True, self.COLORS["labels"])
+                    text_rect = text_surface.get_rect(
+                        bottomright=(
+                            (col + 1) * self.square_size - 2,
+                            (row + 1) * self.square_size - 2,
+                        )
+                    )
+                    screen.blit(text_surface, text_rect)
+                if col == 7:
+                    label = str(8 - row)
+                    text_surface = label_font.render(label, True, self.COLORS["labels"])
+                    text_rect = text_surface.get_rect(
+                        topright=(
+                            (col + 1) * self.square_size - 2,
+                            row * self.square_size + 2,
+                        )
+                    )
+                    screen.blit(text_surface, text_rect)
 
     def _draw_game_over(self, screen: pygame.Surface, state: GameState):
         if not state.game_result:
