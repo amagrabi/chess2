@@ -1,6 +1,9 @@
 from typing import List, Tuple, Optional, Set
 from core.piece import Piece, PieceType
 
+import logging
+
+
 class ChessBoard:
     def __init__(self):
         self.board: List[List[Optional[Piece]]] = [[None for _ in range(8)] for _ in range(8)]
@@ -149,6 +152,7 @@ class ChessBoard:
         row, col = pos
         piece = self.get_piece(pos)
         if not piece:
+            logging.debug(f"No piece at {pos}, cannot get spy moves")
             return moves
 
         # L-shaped moves like a knight
@@ -179,6 +183,7 @@ class ChessBoard:
         row, col = pos
         piece = self.get_piece(pos)
         if not piece:
+            logging.debug(f"No piece at {pos}, cannot get jumping moves")
             return moves
 
         for dr in range(-distance, distance + 1):
@@ -328,6 +333,7 @@ class ChessBoard:
         row, col = pos
         piece = self.get_piece(pos)
         if not piece:
+            logging.debug(f"No piece at {pos}, cannot get sliding moves")
             return moves
 
         new_row, new_col = row + dr, col + dc

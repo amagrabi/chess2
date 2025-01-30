@@ -2,6 +2,7 @@ from collections import defaultdict
 from typing import Tuple, Optional, Dict, Set, List
 from core.board import ChessBoard
 from core.piece import Piece, PieceType
+import logging
 
 class GameState:
     def __init__(self):
@@ -15,71 +16,70 @@ class GameState:
         self.position_history: Dict[str, int] = defaultdict(int)
         self.dragging = False
         self.drag_start: Optional[Tuple[int, int]] = None
-
+ 
     def make_move(self, start: Tuple[int, int], end: Tuple[int, int]) -> bool:
         piece = self.board.get_piece(start)
-        if not piece or piece.is_white != self.is_white_turn:
+        if not piece:
+            logging.warning(f"Attempted to move a non-existent piece at {start}")
             return False
-
+ 
         if end not in self.get_legal_moves(start):
+            logging.warning(f"Illegal move attempted from {start} to {end}")
             return False
-
-        # Store current position before move
-        current_position = self._get_position_string()
-        self.position_history[current_position] += 1
-
-        # Handle special moves
+ 
+        logging.debug(f"Making move from {start} to {end}")
         self._handle_special_moves(start, end, piece)
-
-        # Update game state
         self.last_move = (start, end)
-        self.is_white_turn = not self.is_white_turn
-        self.selected_piece = None
-        self.possible_moves = set()
-
-        # Check game status
         self._update_game_status(piece)
+        self.is_white_turn = not self.is_white_turn
         return True
-
+ 
     def _handle_special_moves(self, start: Tuple[int, int], end: Tuple[int, int], piece: Piece):
         # Spy conversion
         if piece.type == PieceType.SPY:
             target = self.board.get_piece(end)
             if target and target.is_white != piece.is_white:
+                logging.info(f"Spy converted piece at {end}")
                 target.is_white = piece.is_white
                 self.board.board[start[0]][start[1]] = None
                 return
-
+ 
         # Regular move
         self.board.move_piece(start, end)
-
+ 
         # Castling
         if piece.type == PieceType.KING and abs(end[1] - start[1]) == 2:
             row = start[0]
             if end[1] > start[1]:  # Kingside
+                logging.info(f"Kingside castling from {start} to {end}")
                 self.board.move_piece((row, 7), (row, end[1] - 1))
             else:  # Queenside
+                logging.info(f"Queenside castling from {start} to {end}")
                 self.board.move_piece((row, 0), (row, end[1] + 1))
-
+ 
         # Pawn promotion
         if piece.type == PieceType.PAWN and end[0] in [0, 7]:
+            logging.info(f"Pawn promoted to queen at {end}")
             self.board.board[end[0]][end[1]] = Piece(PieceType.QUEEN, piece.is_white)
-
+ 
     def _update_game_status(self, moved_piece: Piece):
         # Check checkmate
         opponent_color = not moved_piece.is_white
         if not self.board.has_legal_moves(opponent_color):
             if self.board.is_in_check(opponent_color):
+                logging.info(f"{'White' if moved_piece.is_white else 'Black'} wins by checkmate")
                 self.game_over = True
                 self.game_result = "white_wins" if moved_piece.is_white else "black_wins"
             else:
+                logging.info("Stalemate. Game is a draw")
                 self.game_over = True
                 self.game_result = "draw"
-
+ 
         # Threefold repetition
         new_position = self._get_position_string()
         self.position_history[new_position] += 1
         if self.position_history[new_position] >= 3 and not self.game_over:
+            logging.info("Threefold repetition. Game is a draw")
             self.game_over = True
             self.game_result = "draw"
 

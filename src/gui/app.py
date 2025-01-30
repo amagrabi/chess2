@@ -1,3 +1,4 @@
+import logging
 from typing import Tuple
 import pygame
 import sys
@@ -5,6 +6,9 @@ import random
 from pygame.locals import *
 from game.state import GameState
 from gui.renderer import GUIRenderer
+
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 class ChessApp:
     def __init__(self, width: int = 800, height: int = 800):
@@ -17,6 +21,7 @@ class ChessApp:
         self.computer_thinking = False
 
     def run(self):
+        logging.info("Starting Chess 2 app")
         while True:
             self._handle_events()
             self._update_display()
@@ -25,10 +30,12 @@ class ChessApp:
     def _handle_events(self):
         for event in pygame.event.get():
             if event.type == QUIT:
+                logging.info("Received QUIT event. Exiting.")
                 pygame.quit()
                 sys.exit()
 
             if event.type == KEYDOWN and event.key == K_ESCAPE:
+                logging.info("Escape key pressed. Resetting game.")
                 self.state.reset()
 
             if not self.state.game_over and not self.computer_thinking:
@@ -39,23 +46,28 @@ class ChessApp:
 
     def _handle_game_events(self, event: pygame.event.Event):
         if event.type == MOUSEBUTTONDOWN and event.button == 1:
+            logging.debug(f"Mouse button down event at {pygame.mouse.get_pos()}")
             self._handle_mouse_down(pygame.mouse.get_pos())
         
-        elif event.type == MOUSEMOTION and event.buttons[0]:  # Left button is held
+        elif event.type == MOUSEMOTION and event.buttons[0]:
+            logging.debug(f"Mouse dragging started")
             if self.state.selected_piece:
                 self.state.dragging = True
         
         elif event.type == MOUSEBUTTONUP and event.button == 1:
+            logging.debug(f"Mouse button up event at {pygame.mouse.get_pos()}")
             self._handle_mouse_up(pygame.mouse.get_pos())
 
     def _handle_mouse_down(self, pos: Tuple[int, int]):
         square = self._pos_to_square(pos)
         piece = self.state.board.get_piece(square)
+        logging.debug(f"Clicked on square: {square}, piece: {piece}")
 
         # If a piece is already selected (two-click mode)
         if self.state.selected_piece is not None:
             # If clicking on a valid target square, make the move
             if square in self.state.possible_moves:
+                logging.info(f"Making move from {self.state.selected_piece} to {square} (two-click)")
                 if self.state.make_move(self.state.selected_piece, square):
                     self._trigger_computer_move()
             # Reset selection
@@ -65,6 +77,7 @@ class ChessApp:
 
         # If clicking on a valid piece, select it (don't start dragging yet)
         if piece and piece.is_white == self.state.is_white_turn:
+            logging.info(f"Selected piece at {square}")
             self.state.drag_start = square
             self.state.selected_piece = square
             self.state.possible_moves = self.state.get_legal_moves(square)
@@ -77,7 +90,9 @@ class ChessApp:
             return
 
         end_square = self._pos_to_square(pos)
+        logging.debug(f"Mouse up at {pos}, converted to square {end_square}")
         if self.state.selected_piece and end_square in self.state.possible_moves:
+            logging.info(f"Making move from {self.state.selected_piece} to {end_square} (drag)")
             if self.state.make_move(self.state.selected_piece, end_square):
                 self._trigger_computer_move()
 
@@ -88,10 +103,12 @@ class ChessApp:
 
     def _trigger_computer_move(self):
         if not self.state.game_over and not self.state.is_white_turn:
+            logging.info("Triggering computer move")
             self.computer_thinking = True
             pygame.time.set_timer(USEREVENT, 1000)
 
     def _handle_computer_move(self):
+        logging.info("Computer is making a move")
         legal_moves = []
         for r in range(8):
             for c in range(8):
@@ -102,6 +119,7 @@ class ChessApp:
 
         if legal_moves:
             start, end = random.choice(legal_moves)
+            logging.info(f"Computer moving from {start} to {end}")
             self.state.make_move(start, end)
 
         pygame.time.set_timer(USEREVENT, 0)
