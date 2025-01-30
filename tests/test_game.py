@@ -8,23 +8,26 @@ def fresh_state():
     return GameState()
 
 
-def test_black_checkmate(fresh_state):  # Modified fools mate
+def test_black_checkmate(fresh_state):  # Adapted fool's mate
     """Test checkmate by black ends game with correct result"""
     state = fresh_state
-    board = state.board
 
     # White pawn to f3
     assert state.make_move((6, 5), (5, 5))
-    # Black pawn to e6 (opens diagonal for queen)
+    # Black pawn to e6 (opens diagonal for queen and bishop)
     assert state.make_move((1, 4), (2, 4))
     # White pawn to g4
     assert state.make_move((6, 6), (4, 6))
-    # Black pawn to e5 (waste a move)
-    assert state.make_move((2, 4), (3, 4))
+    # Black bishop to d6
+    assert state.make_move((0, 5), (2, 3))
     # White pawn to h4
     assert state.make_move((5, 7), (4, 7))
-    # Black queen to h4 (checkmate)
+    # Black queen to h4
     assert state.make_move((0, 3), (4, 7))
+    # White knight to g3 (only move to block the check)
+    assert state.make_move((7, 6), (5, 6))
+    # Black queen to g3 (checkmate)
+    assert state.make_move((4, 7), (5, 6))
 
     assert state.is_white_turn, "Should be white's turn"
     assert state.game_over, "Game should be over"
