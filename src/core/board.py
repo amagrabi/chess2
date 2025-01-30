@@ -111,7 +111,8 @@ class ChessBoard:
         # Initial two-square forward move
         if (piece.is_white and row == 6) or (not piece.is_white and row == 1):
             two_forward = row + 2 * forward
-            if not self.get_piece((two_forward, col)):
+            one_forward = row + forward
+            if not self.get_piece((one_forward, col)) and not self.get_piece((two_forward, col)):
                 moves.add((two_forward, col))
 
         return moves
