@@ -17,9 +17,16 @@ The last patch for chess was probably shipped over 100 years ago, so it's time f
 
 ## Installation
 
-Create a virtual environment and install dependencies in editable mode:
+Create and activate a virtual environment, for example via [uv](https://docs.astral.sh/uv/getting-started/installation/):
+
 ```sh
-pip install -e .
+uv venv
+source .venv/bin/activate
+```
+
+Install dependencies in editable mode:
+```sh
+uv pip install -e .
 ```
 
 Start game:
@@ -27,13 +34,21 @@ Start game:
 chess2
 ```
 
-You play against a randomizing AI. Press `Esc` to restart the game.
+### Alternative with Docker
+
+Requirements: Install [XQuartz](https://www.xquartz.org/) (Mac) or [Xming](https://sourceforge.net/projects/xming/) (Windows). 
+
+Build and start the Docker container:
+```sh
+docker-compose build
+docker-compose up
+```
 
 ## Development
 
 Install dev dependencies:
 ```sh
-pip install -e ".[dev]"
+uv pip install -e ".[dev]"
 ```
 
 Run tests:
