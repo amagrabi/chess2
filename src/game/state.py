@@ -31,7 +31,9 @@ class GameState:
 
         # Track capture before making move
         target_piece = self.board.get_piece(end)
-        self.last_capture = target_piece is not None and target_piece.is_white != piece.is_white
+        self.last_capture = (
+            target_piece is not None and target_piece.is_white != piece.is_white
+        )
 
         logging.debug(f"Making move from {start} to {end}")
         self._handle_special_moves(start, end, piece)

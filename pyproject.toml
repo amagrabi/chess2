@@ -29,3 +29,7 @@ dev = [
 [project.urls]
 Repository = "https://github.com/amagrabi/chess2"
 Releases = "https://github.com/amagrabi/chess2/releases"
+
+[tool.ruff]
+line-length = 88
+indent-width = 4
