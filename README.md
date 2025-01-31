@@ -40,7 +40,9 @@ Start game:
 chess2
 ```
 
-### Option 3: Docker
+### Option 3: Docker (experimental)
+
+Setup is still error-prone, because pygame and Docker aren't best friends.
 
 Requirements: Install [XQuartz](https://www.xquartz.org/) (Mac) or [Xming](https://sourceforge.net/projects/xming/) (Windows). 
 
