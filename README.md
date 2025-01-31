@@ -17,6 +17,12 @@ The last patch for chess was probably shipped over 100 years ago, so it's time f
 
 ## Installation
 
+### Option 1: Executables
+
+Executables for mac os and windows can be found under [releases](https://github.com/amagrabi/chess2/releases).
+
+### Option 2: Python
+
 Create and activate a virtual environment, for example via [uv](https://docs.astral.sh/uv/getting-started/installation/):
 
 ```sh
@@ -34,7 +40,7 @@ Start game:
 chess2
 ```
 
-### Alternative with Docker
+### Option 3: Docker
 
 Requirements: Install [XQuartz](https://www.xquartz.org/) (Mac) or [Xming](https://sourceforge.net/projects/xming/) (Windows). 
 

@@ -1,13 +1,21 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+import os
+
 block_cipher = None
 
 a = Analysis(
     ['src/gui/app.py'],
-    pathex=[],
+    pathex=[os.path.abspath('src')],   # Add project root to Python path
     binaries=[],
-    datas=[('src/assets/*', 'assets/')],  # Make sure trailing slash is included
-    hiddenimports=['pygame'],
+    # pyinstaller can run into issues on some OSes when assets are not added explicitly
+    datas=[
+        ('src/assets/**/*', 'assets/'),
+        ('src/assets/FreeSerif.ttf', 'assets/'),
+        ('src/assets/menu_background.webp', 'assets/'),
+        ('src/assets/sounds/*.mp3', 'assets/sounds/')
+    ],
+    hiddenimports=['pygame', 'game', 'core', 'utils'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -44,4 +52,4 @@ app = BUNDLE(
     name='Chess2.app',
     icon='src/assets/icon.icns',
     bundle_identifier='com.chess2'
-) 
+)
