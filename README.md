@@ -19,7 +19,7 @@ The last patch for chess was probably shipped over 100 years ago, so it's time f
 
 ### Option 1: Executables
 
-Executables for mac os and windows can be found under [releases](https://github.com/amagrabi/chess2/releases).
+Executables for macOS and Windows can be found under [releases](https://github.com/amagrabi/chess2/releases).
 
 ### Option 2: Python
 
@@ -69,7 +69,7 @@ Run tests:
 pytest tests/
 ```
 
-Creating Mac/Windows executables into `/dist` for releases:
+Creating macOS/Windows executables into `/dist` for releases:
 ```sh
 pyinstaller chess2.spec
 ```
