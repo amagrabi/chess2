@@ -1,8 +1,9 @@
+import logging
 from collections import defaultdict
-from typing import Tuple, Optional, Dict, Set
+from typing import Dict, Optional, Set, Tuple
+
 from core.board import ChessBoard
 from core.piece import Piece, PieceType
-import logging
 
 
 class GameState:

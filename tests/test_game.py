@@ -1,6 +1,7 @@
 import pytest
-from game.state import GameState
+
 from core.piece import Piece, PieceType
+from game.state import GameState
 
 
 @pytest.fixture

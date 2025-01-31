@@ -1,22 +1,23 @@
 import logging
-from typing import Tuple
-from core.piece import PieceType
-import pygame
-import sys
 import random
+import sys
+from typing import Tuple
+
+import pygame
 from pygame.locals import (
-    QUIT,
-    KEYDOWN,
     K_ESCAPE,
-    USEREVENT,
+    KEYDOWN,
     MOUSEBUTTONDOWN,
-    MOUSEMOTION,
     MOUSEBUTTONUP,
+    MOUSEMOTION,
+    QUIT,
+    USEREVENT,
 )
+
+from core.piece import PieceType
 from game.state import GameState
 from gui.renderer import GUIRenderer
 from utils import _resource_path
-
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"

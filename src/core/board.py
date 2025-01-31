@@ -1,7 +1,7 @@
-from typing import List, Tuple, Optional, Set
-from core.piece import Piece, PieceType
-
 import logging
+from typing import List, Optional, Set, Tuple
+
+from core.piece import Piece, PieceType
 
 
 class ChessBoard:

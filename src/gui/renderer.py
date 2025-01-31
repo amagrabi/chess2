@@ -1,5 +1,7 @@
+from typing import Set, Tuple
+
 import pygame
-from typing import Tuple, Set
+
 from core.piece import Piece
 from game.state import GameState
 from utils import _resource_path
