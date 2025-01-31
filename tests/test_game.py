@@ -71,21 +71,21 @@ def test_stalemate_switches_turn(fresh_state):
     """Test stalemate switches turn instead of ending game"""
     state = fresh_state
     board = state.board
-    
+
     # Clear board and set up stalemate position
     for row in range(8):
         for col in range(8):
             board.board[row][col] = None
-    
+
     # Black king in corner
     board.board[0][0] = Piece(PieceType.KING, False)
     # White pieces surrounding but not attacking
     board.board[2][0] = Piece(PieceType.KING, True)
     board.board[1][2] = Piece(PieceType.QUEEN, True)
-    
+
     # White makes a move that doesn't resolve the stalemate
     assert state.make_move((2, 0), (2, 1))  # White king moves right
-    
+
     # Should switch turn to black, then back to white due to stalemate
     assert state.is_white_turn
     assert not state.game_over

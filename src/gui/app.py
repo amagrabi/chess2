@@ -22,6 +22,9 @@ class ChessApp:
         self.state = GameState()
         self.renderer = GUIRenderer(width, height)
         self.computer_thinking = False
+        self.in_menu = True
+        self.game_mode = "ai"  # or "local"
+        self.human_turn = True  # White always starts
 
     def run(self):
         logging.info("Starting Chess 2 app")
@@ -40,12 +43,41 @@ class ChessApp:
             if event.type == KEYDOWN and event.key == K_ESCAPE:
                 logging.info("Escape key pressed. Resetting game.")
                 self.state.reset()
+                self.in_menu = True  # Add this to return to menu on ESC
 
-            if not self.state.game_over and not self.computer_thinking:
-                self._handle_game_events(event)
+            if self.in_menu:
+                self._handle_menu_events(event)
+            else:
+                if not self.state.game_over and not self.computer_thinking:
+                    self._handle_game_events(event)
 
-            if event.type == USEREVENT and self.computer_thinking:
-                self._handle_computer_move()
+                if event.type == USEREVENT and self.computer_thinking:
+                    self._handle_computer_move()
+
+    def _handle_menu_events(self, event: pygame.event.Event):
+        if event.type == MOUSEBUTTONDOWN and event.button == 1:
+            x, y = pygame.mouse.get_pos()
+            button_width = 300
+            center_x = self.screen.get_width() // 2
+
+            # Check AI button
+            ai_button_y = self.screen.get_height() // 2
+            if (
+                center_x - button_width // 2 <= x <= center_x + button_width // 2
+                and ai_button_y - 30 <= y <= ai_button_y + 30
+            ):
+                self.game_mode = "ai"
+                self.in_menu = False
+
+            # Check MP button
+            mp_button_y = ai_button_y + 100
+            if (
+                center_x - button_width // 2 <= x <= center_x + button_width // 2
+                and mp_button_y - 30 <= y <= mp_button_y + 30
+            ):
+                self.game_mode = "local"
+                self.in_menu = False
+                self.human_turn = True  # Both players are human
 
     def _handle_game_events(self, event: pygame.event.Event):
         if event.type == MOUSEBUTTONDOWN and event.button == 1:
@@ -62,33 +94,36 @@ class ChessApp:
             self._handle_mouse_up(pygame.mouse.get_pos())
 
     def _handle_mouse_down(self, pos: Tuple[int, int]):
-        square = self._pos_to_square(pos)
-        piece = self.state.board.get_piece(square)
-        logging.debug(f"Clicked on square: {square}, piece: {piece}")
+        if self.game_mode == "local" or (
+            self.game_mode == "ai" and self.state.is_white_turn
+        ):
+            square = self._pos_to_square(pos)
+            piece = self.state.board.get_piece(square)
+            logging.debug(f"Clicked on square: {square}, piece: {piece}")
 
-        # If a piece is already selected (two-click mode)
-        if self.state.selected_piece is not None:
-            # If clicking on a valid target square, make the move
-            if square in self.state.possible_moves:
-                logging.info(
-                    f"Making move from {self.state.selected_piece} to {square} (two-click)"
-                )
-                if self.state.make_move(self.state.selected_piece, square):
-                    self._trigger_computer_move()
-            # Reset selection
-            self.state.selected_piece = None
-            self.state.possible_moves = set()
-            return
+            # If a piece is already selected (two-click mode)
+            if self.state.selected_piece is not None:
+                # If clicking on a valid target square, make the move
+                if square in self.state.possible_moves:
+                    logging.info(
+                        f"Making move from {self.state.selected_piece} to {square} (two-click)"
+                    )
+                    if self.state.make_move(self.state.selected_piece, square):
+                        self._trigger_computer_move()
+                # Reset selection
+                self.state.selected_piece = None
+                self.state.possible_moves = set()
+                return
 
-        # If clicking on a valid piece, select it (don't start dragging yet)
-        if piece and piece.is_white == self.state.is_white_turn:
-            logging.info(f"Selected piece at {square}")
-            self.state.drag_start = square
-            self.state.selected_piece = square
-            self.state.possible_moves = self.state.get_legal_moves(square)
-        else:
-            self.state.selected_piece = None
-            self.state.possible_moves = set()
+            # If clicking on a valid piece, select it (don't start dragging yet)
+            if piece and piece.is_white == self.state.is_white_turn:
+                logging.info(f"Selected piece at {square}")
+                self.state.drag_start = square
+                self.state.selected_piece = square
+                self.state.possible_moves = self.state.get_legal_moves(square)
+            else:
+                self.state.selected_piece = None
+                self.state.possible_moves = set()
 
     def _handle_mouse_up(self, pos: Tuple[int, int]):
         if not self.state.dragging:
@@ -109,10 +144,13 @@ class ChessApp:
         self.state.possible_moves = set()  # Clear possible moves
 
     def _trigger_computer_move(self):
-        if not self.state.game_over and not self.state.is_white_turn:
-            logging.info("Triggering computer move")
-            self.computer_thinking = True
-            pygame.time.set_timer(USEREVENT, 1000)
+        if self.game_mode == "ai" and not self.state.is_white_turn:
+            if not self.state.game_over and not self.state.is_white_turn:
+                logging.info("Triggering computer move")
+                self.computer_thinking = True
+                pygame.time.set_timer(USEREVENT, 1000)
+        else:
+            self.computer_thinking = False
 
     def _handle_computer_move(self):
         logging.info("Computer is making a move")
@@ -134,7 +172,10 @@ class ChessApp:
 
     def _update_display(self):
         self.screen.fill((255, 255, 255))
-        self.renderer.render(self.screen, self.state)
+        if self.in_menu:
+            self.renderer.render_menu(self.screen)
+        else:
+            self.renderer.render(self.screen, self.state)
         pygame.display.flip()
 
     def _pos_to_square(self, pos: Tuple[int, int]) -> Tuple[int, int]:

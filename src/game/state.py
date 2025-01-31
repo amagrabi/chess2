@@ -129,3 +129,5 @@ class GameState:
 
     def reset(self):
         self.__init__()
+        if hasattr(self, "game_mode"):
+            self.game_mode = self.game_mode

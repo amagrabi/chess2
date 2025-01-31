@@ -40,6 +40,45 @@ class GUIRenderer:
             self._draw_game_over(screen, state)
         self._draw_labels(screen)
 
+    def render_menu(self, screen: pygame.Surface):
+        # Load and draw background image
+        try:
+            bg = pygame.image.load(_resource_path("assets/menu_background.webp"))
+            bg = pygame.transform.scale(bg, (self.screen_width, self.screen_height))
+            screen.blit(bg, (0, 0))
+        except FileNotFoundError:
+            screen.fill(self.COLORS["background"])  # Fallback if image missing
+
+        # Draw title text
+        title = self.game_over_font.render("Chess 2", True, self.COLORS["text"])
+        title_rect = title.get_rect(
+            center=(self.screen_width // 2, self.screen_height // 4)
+        )
+        screen.blit(title, title_rect)
+
+        # Draw buttons
+        button_width = 300
+        button_height = 60
+        y_center = self.screen_height // 2 - 80
+
+        # AI Button
+        ai_rect = pygame.Rect(0, 0, button_width, button_height)
+        ai_rect.center = (self.screen_width // 2, y_center)
+        pygame.draw.rect(screen, self.COLORS["dark_square"], ai_rect)
+        ai_text = self.info_font.render(
+            "Play vs. Computer", True, self.COLORS["white_piece"]
+        )
+        screen.blit(ai_text, ai_text.get_rect(center=ai_rect.center))
+
+        # Local MP Button
+        mp_rect = pygame.Rect(0, 0, button_width, button_height)
+        mp_rect.center = (self.screen_width // 2, y_center + 100)
+        pygame.draw.rect(screen, self.COLORS["dark_square"], mp_rect)
+        mp_text = self.info_font.render(
+            "Local Multiplayer", True, self.COLORS["white_piece"]
+        )
+        screen.blit(mp_text, mp_text.get_rect(center=mp_rect.center))
+
     def _draw_board(self, screen: pygame.Surface):
         for row in range(8):
             for col in range(8):
@@ -166,8 +205,8 @@ class GUIRenderer:
 
         # Game result text
         texts = {
-            "white_wins": "Checkmate, you win!",
-            "black_wins": "Checkmate, you lose!",
+            "white_wins": "Checkmate, white wins!",
+            "black_wins": "Checkmate, black wins!",
             "draw": "Draw by threefold repetition!",
         }
         text = self.game_over_font.render(
