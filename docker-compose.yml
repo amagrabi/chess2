@@ -1,0 +1,8 @@
+version: '3'
+services:
+  chess2:
+    build: .
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+    environment:
+      - DISPLAY=unix${DISPLAY}
