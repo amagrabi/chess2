@@ -51,6 +51,11 @@ Install dev dependencies:
 uv pip install -e ".[dev]"
 ```
 
+Install pre-commit hooks for auto-formatting:
+```sh
+pre-commit install
+```
+
 Run tests:
 ```sh
 pytest tests/

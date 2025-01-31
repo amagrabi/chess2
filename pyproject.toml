@@ -19,6 +19,7 @@ chess2 = "gui.app:main"
 dev = [
     "pytest",
     "ruff",
+    "pre-commit",
     "pyinstaller",
 ]
 
