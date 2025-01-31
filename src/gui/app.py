@@ -1,11 +1,13 @@
 import logging
 from typing import Tuple
+from core.piece import PieceType
 import pygame
 import sys
 import random
 from pygame.locals import *
 from game.state import GameState
 from gui.renderer import GUIRenderer
+from utils import _resource_path
 
 
 logging.basicConfig(
@@ -16,6 +18,7 @@ logging.basicConfig(
 class ChessApp:
     def __init__(self, width: int = 800, height: int = 800):
         pygame.init()
+        pygame.mixer.init()
         self.screen = pygame.display.set_mode((width, height))
         pygame.display.set_caption("Chess 2")
         self.clock = pygame.time.Clock()
@@ -25,6 +28,13 @@ class ChessApp:
         self.in_menu = True
         self.game_mode = "ai"  # or "local"
         self.human_turn = True  # White always starts
+        self.sounds = {
+            'move': pygame.mixer.Sound(_resource_path('assets/sounds/move.mp3')),
+            'capture': pygame.mixer.Sound(_resource_path('assets/sounds/capture.mp3')),
+            'castle': pygame.mixer.Sound(_resource_path('assets/sounds/castle.mp3')),
+            'check': pygame.mixer.Sound(_resource_path('assets/sounds/check.mp3')),
+            'checkmate': pygame.mixer.Sound(_resource_path('assets/sounds/checkmate.mp3')),
+        }
 
     def run(self):
         logging.info("Starting Chess 2 app")
@@ -68,6 +78,7 @@ class ChessApp:
             ):
                 self.game_mode = "ai"
                 self.in_menu = False
+                self.sounds['move'].play()
 
             mp_button_y = ai_button_y + 100
             if (
@@ -77,6 +88,7 @@ class ChessApp:
                 self.game_mode = "local"
                 self.in_menu = False
                 self.human_turn = True
+                self.sounds['move'].play()
 
     def _handle_game_events(self, event: pygame.event.Event):
         if event.type == MOUSEBUTTONDOWN and event.button == 1:
@@ -109,6 +121,7 @@ class ChessApp:
                     )
                     if self.state.make_move(self.state.selected_piece, square):
                         self._trigger_computer_move()
+                        self._play_move_sound()
                 # Reset selection
                 self.state.selected_piece = None
                 self.state.possible_moves = set()
@@ -136,6 +149,7 @@ class ChessApp:
             )
             if self.state.make_move(self.state.selected_piece, end_square):
                 self._trigger_computer_move()
+                self._play_move_sound()
 
         self.state.dragging = False
         self.state.drag_start = None
@@ -165,6 +179,7 @@ class ChessApp:
             start, end = random.choice(legal_moves)
             logging.info(f"Computer moving from {start} to {end}")
             self.state.make_move(start, end)
+            self._play_move_sound()
 
         pygame.time.set_timer(USEREVENT, 0)
         self.computer_thinking = False
@@ -180,6 +195,34 @@ class ChessApp:
     def _pos_to_square(self, pos: Tuple[int, int]) -> Tuple[int, int]:
         x, y = pos
         return (y // self.renderer.square_size, x // self.renderer.square_size)
+    
+    def _play_move_sound(self):
+        """Determine and play appropriate sound effect for the last move"""
+        if self.state.game_over:
+            self.sounds['checkmate'].play()
+            return
+            
+        in_check = self.state.board.is_in_check(self.state.is_white_turn)
+        if in_check:
+            self.sounds['check'].play()
+            return
+            
+        # Check for special move types
+        piece = self.state.board.get_piece(self.state.last_move[1])
+        start, end = self.state.last_move
+        
+        # Check for castling
+        if piece and piece.type == PieceType.KING and abs(end[1] - start[1]) == 2:
+            self.sounds['castle'].play()
+            return
+            
+        # Check for capture
+        if self.state.last_capture:
+            self.sounds['capture'].play()
+            return
+            
+        # Default move sound
+        self.sounds['move'].play()
 
 
 def main():

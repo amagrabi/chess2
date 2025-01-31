@@ -17,6 +17,7 @@ class GameState:
         self.position_history: Dict[str, int] = defaultdict(int)
         self.dragging = False
         self.drag_start: Optional[Tuple[int, int]] = None
+        self.last_capture = False
 
     def make_move(self, start: Tuple[int, int], end: Tuple[int, int]) -> bool:
         piece = self.board.get_piece(start)
@@ -27,6 +28,10 @@ class GameState:
         if end not in self.get_legal_moves(start):
             logging.warning(f"Illegal move attempted from {start} to {end}")
             return False
+
+        # Track capture before making move
+        target_piece = self.board.get_piece(end)
+        self.last_capture = target_piece is not None and target_piece.is_white != piece.is_white
 
         logging.debug(f"Making move from {start} to {end}")
         self._handle_special_moves(start, end, piece)
