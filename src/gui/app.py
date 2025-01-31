@@ -43,7 +43,7 @@ class ChessApp:
             if event.type == KEYDOWN and event.key == K_ESCAPE:
                 logging.info("Escape key pressed. Resetting game.")
                 self.state.reset()
-                self.in_menu = True  # Add this to return to menu on ESC
+                self.in_menu = True
 
             if self.in_menu:
                 self._handle_menu_events(event)
@@ -60,8 +60,8 @@ class ChessApp:
             button_width = 300
             center_x = self.screen.get_width() // 2
 
-            # Check AI button
-            ai_button_y = self.screen.get_height() // 2
+            # Match the Y positions with renderer.py's button centers
+            ai_button_y = self.screen.get_height() // 2 - 80
             if (
                 center_x - button_width // 2 <= x <= center_x + button_width // 2
                 and ai_button_y - 30 <= y <= ai_button_y + 30
@@ -69,7 +69,6 @@ class ChessApp:
                 self.game_mode = "ai"
                 self.in_menu = False
 
-            # Check MP button
             mp_button_y = ai_button_y + 100
             if (
                 center_x - button_width // 2 <= x <= center_x + button_width // 2
@@ -77,7 +76,7 @@ class ChessApp:
             ):
                 self.game_mode = "local"
                 self.in_menu = False
-                self.human_turn = True  # Both players are human
+                self.human_turn = True
 
     def _handle_game_events(self, event: pygame.event.Event):
         if event.type == MOUSEBUTTONDOWN and event.button == 1:
