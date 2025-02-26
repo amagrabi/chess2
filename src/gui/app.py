@@ -35,6 +35,7 @@ class ChessApp:
         self.renderer = GUIRenderer(width, height)
         self.computer_thinking = False
         self.in_menu = True
+        self.in_rules = False  # New state for rules page
         self.game_mode = "ai"  # or "local"
         self.human_turn = True  # White always starts
         self.sounds = {
@@ -65,9 +66,12 @@ class ChessApp:
                 logging.info("Escape key pressed. Resetting game.")
                 self.state.reset()
                 self.in_menu = True
+                self.in_rules = False
 
             if self.in_menu:
                 self._handle_menu_events(event)
+            elif self.in_rules:
+                self._handle_rules_events(event)
             else:
                 if not self.state.game_over and not self.computer_thinking:
                     self._handle_game_events(event)
@@ -89,6 +93,7 @@ class ChessApp:
             ):
                 self.game_mode = "ai"
                 self.in_menu = False
+                self.in_rules = False
                 self.sounds["move"].play()
 
             mp_button_y = ai_button_y + 100
@@ -98,7 +103,32 @@ class ChessApp:
             ):
                 self.game_mode = "local"
                 self.in_menu = False
-                self.human_turn = True
+                self.in_rules = False
+                self.sounds["move"].play()
+
+            rules_button_y = mp_button_y + 100
+            if (
+                center_x - button_width // 2 <= x <= center_x + button_width // 2
+                and rules_button_y - 30 <= y <= rules_button_y + 30
+            ):
+                self.in_menu = False
+                self.in_rules = True
+                self.sounds["move"].play()
+
+    def _handle_rules_events(self, event: pygame.event.Event):
+        if event.type == MOUSEBUTTONDOWN and event.button == 1:
+            x, y = pygame.mouse.get_pos()
+            button_width = 200
+            button_height = 50
+            back_rect = pygame.Rect(
+                20,  # x position
+                self.screen.get_height() - 70,  # y position
+                button_width,
+                button_height,
+            )
+            if back_rect.collidepoint(x, y):
+                self.in_rules = False
+                self.in_menu = True
                 self.sounds["move"].play()
 
     def _handle_game_events(self, event: pygame.event.Event):
@@ -196,9 +226,10 @@ class ChessApp:
         self.computer_thinking = False
 
     def _update_display(self):
-        self.screen.fill((255, 255, 255))
         if self.in_menu:
             self.renderer.render_menu(self.screen)
+        elif self.in_rules:
+            self.renderer.render_rules(self.screen)
         else:
             self.renderer.render(self.screen, self.state)
         pygame.display.flip()

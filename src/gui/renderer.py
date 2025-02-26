@@ -81,6 +81,84 @@ class GUIRenderer:
         )
         screen.blit(mp_text, mp_text.get_rect(center=mp_rect.center))
 
+        # Rules Button
+        rules_rect = pygame.Rect(0, 0, button_width, button_height)
+        rules_rect.center = (self.screen_width // 2, y_center + 200)
+        pygame.draw.rect(screen, self.COLORS["dark_square"], rules_rect)
+        rules_text = self.info_font.render("Rules", True, self.COLORS["white_piece"])
+        screen.blit(rules_text, rules_text.get_rect(center=rules_rect.center))
+
+    def render_rules(self, screen: pygame.Surface):
+        # Load and draw background image (same as menu)
+        try:
+            bg = pygame.image.load(_resource_path("assets/menu_background.webp"))
+            bg = pygame.transform.scale(bg, (self.screen_width, self.screen_height))
+            screen.blit(bg, (0, 0))
+        except FileNotFoundError:
+            screen.fill(self.COLORS["background"])  # Fallback if image missing
+
+        # Add semi-transparent white overlay for better readability
+        overlay = pygame.Surface(
+            (self.screen_width, self.screen_height), pygame.SRCALPHA
+        )
+        overlay.fill((255, 255, 255, 90))  # White with 70% opacity
+        screen.blit(overlay, (0, 0))
+
+        # Title
+        title = self.game_over_font.render("Chess 2 Rules", True, self.COLORS["text"])
+        title_rect = title.get_rect(center=(self.screen_width // 2, 50))
+        screen.blit(title, title_rect)
+
+        # Rules text
+        rules = [
+            "• Knights can now jump in all directions, because real horses stopped using L-shaped movement centuries ago.",
+            "• Stalemate is no longer a draw. If you can't move, that's a you problem and your opponent gets another turn.",
+            "• En passant has been disabled, so nobody ever has to spell it again.",
+            "• Added a new piece on h2/h7, the spy. Moves in sneaky L-shapes, but converts enemy pieces instead of capturing them. Can only convert once and dies in the process.",
+            "• Bishops can no longer capture queens. Just doesn't seem right.",
+            "• Fixed a bug where computers were better at chess than humans.",
+            "• Pawns can now move and capture both forwards and diagonally, like normal people. But they still can't move backwards. That would be ridiculous.",
+        ]
+
+        # Use a smaller font for rules text
+        rules_font = pygame.font.Font(None, 28)
+        y = 120
+        line_height = 40
+        padding = 20
+
+        for rule in rules:
+            # Split long lines into multiple lines
+            words = rule.split()
+            lines = []
+            current_line = words[0]
+
+            for word in words[1:]:
+                test_line = current_line + " " + word
+                test_surface = rules_font.render(test_line, True, self.COLORS["text"])
+                if test_surface.get_width() < self.screen_width - 2 * padding:
+                    current_line = test_line
+                else:
+                    lines.append(current_line)
+                    current_line = word
+            lines.append(current_line)
+
+            # Render each line
+            for line in lines:
+                text = rules_font.render(line, True, self.COLORS["text"])
+                text_rect = text.get_rect(x=padding, y=y)
+                screen.blit(text, text_rect)
+                y += line_height
+
+        # Back button
+        button_width = 200
+        button_height = 50
+        back_rect = pygame.Rect(
+            20, self.screen_height - 70, button_width, button_height
+        )
+        pygame.draw.rect(screen, self.COLORS["dark_square"], back_rect)
+        back_text = self.info_font.render("Back", True, self.COLORS["white_piece"])
+        screen.blit(back_text, back_text.get_rect(center=back_rect.center))
+
     def _draw_board(self, screen: pygame.Surface):
         for row in range(8):
             for col in range(8):
