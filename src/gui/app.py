@@ -40,12 +40,12 @@ class ChessApp:
         self.game_mode = "ai"  # or "local"
         self.human_turn = True  # White always starts
         self.sounds = {
-            "move": pygame.mixer.Sound(_resource_path("assets/sounds/move.mp3")),
-            "capture": pygame.mixer.Sound(_resource_path("assets/sounds/capture.mp3")),
-            "castle": pygame.mixer.Sound(_resource_path("assets/sounds/castle.mp3")),
-            "check": pygame.mixer.Sound(_resource_path("assets/sounds/check.mp3")),
+            "move": pygame.mixer.Sound(_resource_path("assets/sounds/move.ogg")),
+            "capture": pygame.mixer.Sound(_resource_path("assets/sounds/capture.ogg")),
+            "castle": pygame.mixer.Sound(_resource_path("assets/sounds/castle.ogg")),
+            "check": pygame.mixer.Sound(_resource_path("assets/sounds/check.ogg")),
             "checkmate": pygame.mixer.Sound(
-                _resource_path("assets/sounds/checkmate.mp3")
+                _resource_path("assets/sounds/checkmate.ogg")
             ),
         }
 
