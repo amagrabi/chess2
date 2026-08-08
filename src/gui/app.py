@@ -1,6 +1,7 @@
 import logging
 import random
 import sys
+import asyncio
 from typing import Tuple
 
 import pygame
@@ -48,12 +49,13 @@ class ChessApp:
             ),
         }
 
-    def run(self):
+    async def run(self):
         logging.info("Starting Chess 2 app")
         while True:
             self._handle_events()
             self._update_display()
             self.clock.tick(60)
+            await asyncio.sleep(0)
 
     def _handle_events(self):
         for event in pygame.event.get():
@@ -267,10 +269,10 @@ class ChessApp:
         self.sounds["move"].play()
 
 
-def main():
+async def main():
     app = ChessApp()
-    app.run()
+    await app.run()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
