@@ -18,7 +18,9 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install pygbag pygame
+        run: |
+          sudo apt-get update && sudo apt-get install -y ffmpeg
+          pip install pygbag pygame
 
       - name: Build WebAssembly game
         run: pygbag --build --disable-sound-format-error src
