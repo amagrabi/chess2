@@ -39,18 +39,30 @@ class ChessApp:
         self.in_rules = False  # New state for rules page
         self.game_mode = "ai"  # or "local"
         self.human_turn = True  # White always starts
-        self.sounds = {
-            "move": pygame.mixer.Sound(_resource_path("assets/sounds/move.ogg")),
-            "capture": pygame.mixer.Sound(_resource_path("assets/sounds/capture.ogg")),
-            "castle": pygame.mixer.Sound(_resource_path("assets/sounds/castle.ogg")),
-            "check": pygame.mixer.Sound(_resource_path("assets/sounds/check.ogg")),
-            "checkmate": pygame.mixer.Sound(
-                _resource_path("assets/sounds/checkmate.ogg")
-            ),
-        }
+        self.sounds = {}
+        self.assets_loaded = False
+
+    def _load_assets(self):
+        """Load audio assets. Called after first event loop yield so pygbag VFS is ready."""
+        try:
+            self.sounds = {
+                "move": pygame.mixer.Sound(_resource_path("assets/sounds/move.ogg")),
+                "capture": pygame.mixer.Sound(_resource_path("assets/sounds/capture.ogg")),
+                "castle": pygame.mixer.Sound(_resource_path("assets/sounds/castle.ogg")),
+                "check": pygame.mixer.Sound(_resource_path("assets/sounds/check.ogg")),
+                "checkmate": pygame.mixer.Sound(
+                    _resource_path("assets/sounds/checkmate.ogg")
+                ),
+            }
+        except Exception as e:
+            logging.warning(f"Could not load sounds: {e}")
+        self.assets_loaded = True
 
     async def run(self):
         logging.info("Starting Chess 2 app")
+        # Yield once first so pygbag's virtual filesystem is fully mounted
+        await asyncio.sleep(0)
+        self._load_assets()
         while True:
             self._handle_events()
             self._update_display()
@@ -96,7 +108,7 @@ class ChessApp:
                 self.game_mode = "ai"
                 self.in_menu = False
                 self.in_rules = False
-                self.sounds["move"].play()
+                if self.sounds: self.sounds["move"].play()
 
             mp_button_y = ai_button_y + 100
             if (
@@ -106,7 +118,7 @@ class ChessApp:
                 self.game_mode = "local"
                 self.in_menu = False
                 self.in_rules = False
-                self.sounds["move"].play()
+                if self.sounds: self.sounds["move"].play()
 
             rules_button_y = mp_button_y + 100
             if (
@@ -115,7 +127,7 @@ class ChessApp:
             ):
                 self.in_menu = False
                 self.in_rules = True
-                self.sounds["move"].play()
+                if self.sounds: self.sounds["move"].play()
 
     def _handle_rules_events(self, event: pygame.event.Event):
         if event.type == MOUSEBUTTONDOWN and event.button == 1:
@@ -131,7 +143,7 @@ class ChessApp:
             if back_rect.collidepoint(x, y):
                 self.in_rules = False
                 self.in_menu = True
-                self.sounds["move"].play()
+                if self.sounds: self.sounds["move"].play()
 
     def _handle_game_events(self, event: pygame.event.Event):
         if event.type == MOUSEBUTTONDOWN and event.button == 1:
@@ -242,6 +254,8 @@ class ChessApp:
 
     def _play_move_sound(self):
         """Determine and play appropriate sound effect for the last move"""
+        if not self.sounds:
+            return
         if self.state.game_over:
             self.sounds["checkmate"].play()
             return
@@ -266,7 +280,7 @@ class ChessApp:
             return
 
         # Default move sound
-        self.sounds["move"].play()
+        if self.sounds: self.sounds["move"].play()
 
 
 async def main():
