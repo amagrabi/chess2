@@ -25,11 +25,9 @@ jobs:
       - name: Build WebAssembly game
         run: pygbag --build --disable-sound-format-error src
 
-      - name: Publish to Cloudflare Pages
-        uses: cloudflare/pages-action@v1
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          projectName: chess2
-          directory: src/build/web
-          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          command: pages deploy src/build/web --project-name chess2
