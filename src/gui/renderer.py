@@ -14,16 +14,44 @@ WINDOW_HEIGHT = BOARD_SIZE
 
 DIFFICULTY_LABELS = (("easy", "Easy"), ("medium", "Medium"), ("hard", "Hard"))
 
+# Condensed for the in-game panel; the full wording lives on the rules screen.
+SHORT_RULES = (
+    "Knights jump in any direction",
+    "Pawns move and capture forwards and diagonally",
+    "The spy on h2/h7 converts one enemy piece, then dies",
+    "Bishops cannot capture queens",
+    "Stalemate gives your opponent another turn",
+    "No en passant",
+)
+
+FULL_RULES = (
+    "• Knights can now jump in all directions, because real horses stopped using L-shaped movement centuries ago.",
+    "• Stalemate is no longer a draw. If you can't move, that's a you problem and your opponent gets another turn.",
+    "• En passant has been disabled, so nobody ever has to spell it again.",
+    "• Added a new piece on h2/h7, the spy. Moves in sneaky L-shapes, but converts enemy pieces instead of capturing them. Can only convert once and dies in the process.",
+    "• Bishops can no longer capture queens. Just doesn't seem right.",
+    "• Fixed a bug where computers were better at chess than humans.",
+    "• Pawns can now move and capture both forwards and diagonally, like normal people. But they still can't move backwards. That would be ridiculous.",
+)
+
 
 class GUIRenderer:
     COLORS = {
         "background": (255, 255, 255),
-        "dark_square": (136, 90, 56),
-        "light_square": (203, 174, 122),
-        "legal_moves": (120, 140, 40),
-        "last_move": (220, 205, 33),
-        "white_piece": (255, 255, 255),
-        "black_piece": (0, 0, 0),
+        # Softer, less saturated wood than before, which gives the pieces more
+        # contrast to sit against.
+        "dark_square": (172, 126, 89),
+        "light_square": (238, 216, 180),
+        # Move hints are a neutral translucent brown rather than olive green,
+        # so they read as part of the board instead of fighting it.
+        "legal_moves": (74, 52, 36),
+        "last_move": (214, 176, 84),
+        "selected": (238, 202, 110),
+        "check": (198, 74, 58),
+        "white_piece": (250, 247, 242),
+        "black_piece": (38, 32, 28),
+        "piece_outline_light": (58, 44, 34),
+        "piece_outline_dark": (232, 224, 212),
         "text": (0, 0, 0),
         "labels": (70, 70, 70),
         "panel": (38, 30, 24),
@@ -42,10 +70,10 @@ class GUIRenderer:
         self.square_size = self.board_size // 8
 
         try:
-            self.font = pygame.font.Font(_resource_path("assets/FreeSerif.ttf"), 64)
+            self.font = pygame.font.Font(_resource_path("assets/FreeSerif.ttf"), 72)
         except Exception as e:
             print(f"Chess font not found ({e}). Using default font.")
-            self.font = pygame.font.Font(None, 64)
+            self.font = pygame.font.Font(None, 72)
 
         self.game_over_font = pygame.font.Font(None, 74)
         self.info_font = pygame.font.Font(None, 36)
@@ -53,6 +81,48 @@ class GUIRenderer:
         self.mono_font = pygame.font.Font(None, 24)
 
         self.menu_background = self._load_menu_background()
+        # Pieces are redrawn every frame; rendering the glyph and its outline
+        # each time is wasteful, so cache one surface per (type, colour).
+        self._piece_cache = {}
+
+    # ---------------------------------------------------------------- pieces
+
+    def _piece_surface(self, piece: Piece) -> pygame.Surface:
+        key = (piece.type, piece.is_white)
+        cached = self._piece_cache.get(key)
+        if cached is not None:
+            return cached
+
+        fill = (
+            self.COLORS["white_piece"] if piece.is_white else self.COLORS["black_piece"]
+        )
+        outline = (
+            self.COLORS["piece_outline_light"]
+            if piece.is_white
+            else self.COLORS["piece_outline_dark"]
+        )
+
+        body = self.font.render(piece.glyph, True, fill)
+        edge = self.font.render(piece.glyph, True, outline)
+
+        thickness = 2
+        surface = pygame.Surface(
+            (body.get_width() + thickness * 2, body.get_height() + thickness * 2),
+            pygame.SRCALPHA,
+        )
+        # Stamp the outline in eight directions, then the fill on top.
+        for dx, dy in (
+            (-1, -1), (0, -1), (1, -1),
+            (-1, 0), (1, 0),
+            (-1, 1), (0, 1), (1, 1),
+        ):
+            surface.blit(
+                edge, (thickness + dx * thickness, thickness + dy * thickness)
+            )
+        surface.blit(body, (thickness, thickness))
+
+        self._piece_cache[key] = surface
+        return surface
 
     # ------------------------------------------------------------- background
 
@@ -115,9 +185,13 @@ class GUIRenderer:
         x = self.board_size + 24
         width = PANEL_WIDTH - 48
         return {
+            "rules": pygame.Rect(x, self.screen_height - 212, width, 52),
             "undo": pygame.Rect(x, self.screen_height - 148, width, 52),
             "menu": pygame.Rect(x, self.screen_height - 84, width, 52),
         }
+
+    def rules_overlay_close_rect(self) -> pygame.Rect:
+        return pygame.Rect(self.board_size // 2 - 90, self.board_size - 84, 180, 52)
 
     def promotion_rects(self) -> List[Tuple[PieceType, pygame.Rect]]:
         size = 110
@@ -193,20 +267,10 @@ class GUIRenderer:
         title = self.game_over_font.render("Chess 2 Rules", True, self.COLORS["text"])
         screen.blit(title, title.get_rect(center=(self.screen_width // 2, 50)))
 
-        rules = [
-            "• Knights can now jump in all directions, because real horses stopped using L-shaped movement centuries ago.",
-            "• Stalemate is no longer a draw. If you can't move, that's a you problem and your opponent gets another turn.",
-            "• En passant has been disabled, so nobody ever has to spell it again.",
-            "• Added a new piece on h2/h7, the spy. Moves in sneaky L-shapes, but converts enemy pieces instead of capturing them. Can only convert once and dies in the process.",
-            "• Bishops can no longer capture queens. Just doesn't seem right.",
-            "• Fixed a bug where computers were better at chess than humans.",
-            "• Pawns can now move and capture both forwards and diagonally, like normal people. But they still can't move backwards. That would be ridiculous.",
-        ]
-
         rules_font = pygame.font.Font(None, 28)
         y = 120
         padding = 20
-        for rule in rules:
+        for rule in FULL_RULES:
             for line in self._wrap(rule, rules_font, self.screen_width - 2 * padding):
                 screen.blit(
                     rules_font.render(line, True, self.COLORS["text"]), (padding, y)
@@ -241,16 +305,45 @@ class GUIRenderer:
         difficulty: str = "medium",
         thinking: bool = False,
         promoting: bool = False,
+        showing_rules: bool = False,
     ):
         self._draw_board(screen)
         self._draw_highlights(screen, state)
         self._draw_pieces(screen, state)
         self._draw_labels(screen)
         self._draw_panel(screen, state, game_mode, difficulty, thinking)
-        if promoting:
+        if showing_rules:
+            self._draw_rules_overlay(screen)
+        elif promoting:
             self._draw_promotion(screen, state)
         elif state.game_over:
             self._draw_game_over(screen, state)
+
+    def _draw_rules_overlay(self, screen: pygame.Surface):
+        """The house rules, over the board, without leaving the game."""
+        overlay = pygame.Surface((self.board_size, self.board_size), pygame.SRCALPHA)
+        overlay.fill((22, 16, 13, 235))
+        screen.blit(overlay, (0, 0))
+
+        title = self.game_over_font.render(
+            "House Rules", True, self.COLORS["accent"]
+        )
+        screen.blit(title, title.get_rect(center=(self.board_size // 2, 60)))
+
+        font = pygame.font.Font(None, 28)
+        padding = 40
+        y = 120
+        for rule in FULL_RULES:
+            for line in self._wrap(rule, font, self.board_size - 2 * padding):
+                screen.blit(
+                    font.render(line, True, self.COLORS["panel_text"]), (padding, y)
+                )
+                y += 32
+            y += 10
+
+        self._draw_button(
+            screen, self.rules_overlay_close_rect(), "Back to game", self.info_font
+        )
 
     def _draw_panel(
         self,
@@ -305,6 +398,7 @@ class GUIRenderer:
 
         buttons = self.panel_button_rects()
         undo_enabled = state.can_undo()
+        self._draw_button(screen, buttons["rules"], "House Rules", self.info_font)
         self._draw_button(
             screen,
             buttons["undo"],
@@ -322,9 +416,34 @@ class GUIRenderer:
     def _draw_move_list(
         self, screen: pygame.Surface, state: GameState, x: int, y: int
     ):
-        available = self.screen_height - 170 - y
+        available = self.screen_height - 234 - y
         line_height = 24
         max_rows = max(available // line_height, 0)
+
+        # Before the first move the panel is empty anyway, so use it to teach
+        # the house rules -- they are the whole point of the game and easy to
+        # miss otherwise.
+        if not state.move_log:
+            screen.blit(
+                self.small_font.render(
+                    "What's different", True, self.COLORS["accent"]
+                ),
+                (x, y),
+            )
+            y += 30
+            for hint in SHORT_RULES:
+                for line in self._wrap(
+                    f"• {hint}", self.mono_font, PANEL_WIDTH - 48
+                ):
+                    screen.blit(
+                        self.mono_font.render(
+                            line, True, self.COLORS["panel_muted"]
+                        ),
+                        (x, y),
+                    )
+                    y += 22
+                y += 4
+            return
 
         rows = []
         for i in range(0, len(state.move_log), 2):
@@ -332,15 +451,6 @@ class GUIRenderer:
             white = state.move_log[i]
             black = state.move_log[i + 1] if i + 1 < len(state.move_log) else ""
             rows.append(f"{number:>3}. {white:<10}{black}")
-
-        if not rows:
-            screen.blit(
-                self.mono_font.render(
-                    "No moves yet", True, self.COLORS["panel_muted"]
-                ),
-                (x, y),
-            )
-            return
 
         for row in rows[-max_rows:]:
             screen.blit(
@@ -367,12 +477,8 @@ class GUIRenderer:
         is_white = not state.is_white_turn
         for piece_type, rect in self.promotion_rects():
             pygame.draw.rect(screen, self.COLORS["light_square"], rect, border_radius=8)
-            symbol = Piece(piece_type, is_white).symbol
-            colour = (
-                self.COLORS["white_piece"] if is_white else self.COLORS["black_piece"]
-            )
-            text = self.font.render(symbol, True, colour)
-            screen.blit(text, text.get_rect(center=rect.center))
+            piece_surface = self._piece_surface(Piece(piece_type, is_white))
+            screen.blit(piece_surface, piece_surface.get_rect(center=rect.center))
 
     def _draw_board(self, screen: pygame.Surface):
         for row in range(8):
@@ -397,23 +503,60 @@ class GUIRenderer:
         if state.last_move:
             self._draw_last_move_highlight(screen, state.last_move)
 
+        self._draw_check_highlight(screen, state)
+
         if state.selected_piece:
             self._draw_selected_highlight(screen, state.selected_piece)
-            self._draw_legal_moves(screen, state.possible_moves)
+            self._draw_legal_moves(screen, state)
 
-    def _draw_selected_highlight(self, screen: pygame.Surface, pos: Tuple[int, int]):
+    def _tint_square(self, screen: pygame.Surface, pos: Tuple[int, int], colour, alpha):
         surface = pygame.Surface((self.square_size, self.square_size), pygame.SRCALPHA)
-        surface.fill((*self.COLORS["legal_moves"], 100))
+        surface.fill((*colour, alpha))
         screen.blit(surface, (pos[1] * self.square_size, pos[0] * self.square_size))
 
-    def _draw_legal_moves(self, screen: pygame.Surface, moves: Set[Tuple[int, int]]):
-        for move in moves:
-            center = (
-                move[1] * self.square_size + self.square_size // 2,
-                move[0] * self.square_size + self.square_size // 2,
+    def _draw_selected_highlight(self, screen: pygame.Surface, pos: Tuple[int, int]):
+        self._tint_square(screen, pos, self.COLORS["selected"], 130)
+
+    def _draw_check_highlight(self, screen: pygame.Surface, state: GameState):
+        """Mark the king's square when it is in check."""
+        if state.game_over or not state.board.is_in_check(state.is_white_turn):
+            return
+        for r in range(8):
+            for c in range(8):
+                piece = state.board.board[r][c]
+                if (
+                    piece
+                    and piece.type == PieceType.KING
+                    and piece.is_white == state.is_white_turn
+                ):
+                    self._tint_square(screen, (r, c), self.COLORS["check"], 120)
+                    return
+
+    def _draw_legal_moves(self, screen: pygame.Surface, state: GameState):
+        """A dot marks a quiet move; a ring marks a capture or spy conversion."""
+        for move in state.possible_moves:
+            overlay = pygame.Surface(
+                (self.square_size, self.square_size), pygame.SRCALPHA
             )
-            pygame.draw.circle(
-                screen, self.COLORS["legal_moves"], center, self.square_size // 8
+            local = (self.square_size // 2, self.square_size // 2)
+            if state.board.get_piece(move) is not None:
+                pygame.draw.circle(
+                    overlay,
+                    (*self.COLORS["legal_moves"], 120),
+                    local,
+                    self.square_size // 2 - 4,
+                    width=6,
+                )
+            else:
+                pygame.draw.circle(
+                    overlay,
+                    (*self.COLORS["legal_moves"], 110),
+                    local,
+                    self.square_size // 7,
+                )
+            screen.blit(
+                overlay,
+                (move[1] * self.square_size, move[0] * self.square_size),
             )
 
     def _draw_last_move_highlight(
@@ -437,20 +580,16 @@ class GUIRenderer:
             self._draw_dragged_piece(screen, state)
 
     def _draw_piece(self, screen: pygame.Surface, piece: Piece, pos: Tuple[int, int]):
-        text_color = (
-            self.COLORS["white_piece"] if piece.is_white else self.COLORS["black_piece"]
+        surface = self._piece_surface(piece)
+        screen.blit(
+            surface,
+            surface.get_rect(
+                center=(
+                    pos[1] * self.square_size + self.square_size // 2,
+                    pos[0] * self.square_size + self.square_size // 2,
+                )
+            ),
         )
-        text_surface = self.font.render(piece.symbol, True, text_color)
-        text_rect = text_surface.get_rect(
-            center=(
-                pos[1] * self.square_size + self.square_size // 2,
-                pos[0] * self.square_size + self.square_size // 2,
-            )
-        )
-
-        shadow_surface = self.font.render(piece.symbol, True, (80, 80, 80))
-        screen.blit(shadow_surface, text_rect.move(1.5, 1.5))
-        screen.blit(text_surface, text_rect)
 
     def _draw_dragged_piece(self, screen: pygame.Surface, state: GameState):
         if not state.selected_piece:
@@ -460,12 +599,8 @@ class GUIRenderer:
         if not piece:
             return
 
-        text_color = (
-            self.COLORS["white_piece"] if piece.is_white else self.COLORS["black_piece"]
-        )
-        text_surface = self.font.render(piece.symbol, True, text_color)
-        mouse_pos = pygame.mouse.get_pos()
-        screen.blit(text_surface, text_surface.get_rect(center=mouse_pos))
+        surface = self._piece_surface(piece)
+        screen.blit(surface, surface.get_rect(center=pygame.mouse.get_pos()))
 
     def _draw_labels(self, screen: pygame.Surface):
         label_font = pygame.font.Font(None, 16)

@@ -47,6 +47,8 @@ class ChessApp:
         self.assets_loaded = False
         # Set while waiting for the player to choose a promotion piece.
         self.pending_promotion: Optional[Tuple[Tuple[int, int], Tuple[int, int]]] = None
+        # House-rules overlay shown over the board, without leaving the game.
+        self.rules_overlay = False
 
     def _load_assets(self):
         """Load audio assets. Called after first event loop yield so pygbag VFS is ready."""
@@ -59,7 +61,9 @@ class ChessApp:
                     self.sounds[name] = pygame.mixer.Sound(path)
                     break
                 except Exception as e:
-                    last_error = e
+                    # Keep the first failure: it names the format we actually
+                    # ship, so the log says why that one could not be decoded.
+                    last_error = last_error or e
             else:
                 logging.warning(f"Could not load sound '{name}': {last_error}")
         self.assets_loaded = True
@@ -95,7 +99,11 @@ class ChessApp:
                 sys.exit()
 
             if event.type == KEYDOWN and event.key == K_ESCAPE:
-                self._return_to_menu()
+                # Escape backs out of the rules overlay first, then to the menu.
+                if self.rules_overlay:
+                    self.rules_overlay = False
+                else:
+                    self._return_to_menu()
                 continue
 
             if (
@@ -111,6 +119,8 @@ class ChessApp:
                 self._handle_menu_events(event)
             elif self.in_rules:
                 self._handle_rules_events(event)
+            elif self.rules_overlay:
+                self._handle_rules_overlay_events(event)
             elif self.pending_promotion:
                 self._handle_promotion_events(event)
             else:
@@ -123,6 +133,7 @@ class ChessApp:
         logging.info("Returning to menu")
         self.state.reset()
         self.pending_promotion = None
+        self.rules_overlay = False
         self.in_menu = True
         self.in_rules = False
 
@@ -160,13 +171,25 @@ class ChessApp:
             self.in_menu = True
             self._play("move")
 
+    def _handle_rules_overlay_events(self, event: pygame.event.Event):
+        # Only the button (or Escape) closes it. Dismissing on any click meant
+        # the paired down/up events the runtime delivers could shut it again
+        # immediately.
+        if event.type == MOUSEBUTTONDOWN and event.button == 1:
+            if self.renderer.rules_overlay_close_rect().collidepoint(event.pos):
+                self.rules_overlay = False
+                self._play("move")
+
     def _handle_panel_events(self, event: pygame.event.Event):
         if event.type != MOUSEBUTTONDOWN or event.button != 1:
             return
 
         pos = event.pos
         buttons = self.renderer.panel_button_rects()
-        if buttons["undo"].collidepoint(pos):
+        if buttons["rules"].collidepoint(pos):
+            self.rules_overlay = True
+            self._play("move")
+        elif buttons["undo"].collidepoint(pos):
             self._undo()
         elif buttons["menu"].collidepoint(pos):
             self._return_to_menu()
@@ -201,7 +224,14 @@ class ChessApp:
             self._handle_mouse_down(event.pos)
 
         elif event.type == MOUSEMOTION and event.buttons[0]:
-            if self.state.selected_piece:
+            # Only count as a drag once the pointer actually leaves the square
+            # it started on. Otherwise the jitter of an ordinary click (and any
+            # touch) starts a "drag" that ends where it began and cancels the
+            # selection.
+            if (
+                self.state.selected_piece
+                and self.renderer.square_at(event.pos) != self.state.drag_start
+            ):
                 self.state.dragging = True
 
         elif event.type == MOUSEBUTTONUP and event.button == 1:
@@ -241,6 +271,13 @@ class ChessApp:
             return
 
         end_square = self.renderer.square_at(pos)
+
+        # Released back where it started: keep the piece selected so the player
+        # can finish the move with a second click.
+        if end_square is not None and end_square == self.state.selected_piece:
+            self.state.dragging = False
+            return
+
         if (
             end_square is not None
             and self.state.selected_piece
@@ -275,6 +312,7 @@ class ChessApp:
             and not self.state.game_over
             and not self.state.is_white_turn
             and not self.pending_promotion
+            and not self.rules_overlay
         )
 
     async def _make_computer_move(self):
@@ -310,6 +348,7 @@ class ChessApp:
                 difficulty=self.difficulty,
                 thinking=self.computer_thinking,
                 promoting=self.pending_promotion is not None,
+                showing_rules=self.rules_overlay,
             )
         pygame.display.flip()
 
