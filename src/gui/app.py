@@ -1,23 +1,23 @@
-import logging
-import random
-import sys
 import asyncio
-from typing import Tuple
+import logging
+import sys
+from typing import Optional, Tuple
 
 import pygame
 from pygame.locals import (
     K_ESCAPE,
+    K_u,
     KEYDOWN,
     MOUSEBUTTONDOWN,
     MOUSEBUTTONUP,
     MOUSEMOTION,
     QUIT,
-    USEREVENT,
 )
 
 from core.piece import PieceType
+from game import ai
 from game.state import GameState
-from gui.renderer import GUIRenderer
+from gui.renderer import WINDOW_HEIGHT, WINDOW_WIDTH, GUIRenderer
 from utils import _resource_path
 
 logging.basicConfig(
@@ -26,7 +26,7 @@ logging.basicConfig(
 
 
 class ChessApp:
-    def __init__(self, width: int = 800, height: int = 800):
+    def __init__(self, width: int = WINDOW_WIDTH, height: int = WINDOW_HEIGHT):
         pygame.init()
         try:
             pygame.mixer.init()
@@ -40,15 +40,17 @@ class ChessApp:
         self.renderer = GUIRenderer(width, height)
         self.computer_thinking = False
         self.in_menu = True
-        self.in_rules = False  # New state for rules page
+        self.in_rules = False
         self.game_mode = "ai"  # or "local"
-        self.human_turn = True  # White always starts
+        self.difficulty = ai.MEDIUM
         self.sounds = {}
         self.assets_loaded = False
+        # Set while waiting for the player to choose a promotion piece.
+        self.pending_promotion: Optional[Tuple[Tuple[int, int], Tuple[int, int]]] = None
 
     def _load_assets(self):
         """Load audio assets. Called after first event loop yield so pygbag VFS is ready."""
-        for name in ("move", "capture", "castle", "check", "checkmate"):
+        for name in ("move", "capture", "castle", "check", "checkmate", "promote"):
             last_error = None
             # pygbag transcodes .ogg to .mp3 when packaging for the web, so try both.
             for ext in ("ogg", "mp3"):
@@ -76,8 +78,14 @@ class ChessApp:
         while True:
             self._handle_events()
             self._update_display()
+
+            if self._computer_to_move():
+                await self._make_computer_move()
+
             self.clock.tick(60)
             await asyncio.sleep(0)
+
+    # ---------------------------------------------------------------- events
 
     def _handle_events(self):
         for event in pygame.event.get():
@@ -87,180 +95,223 @@ class ChessApp:
                 sys.exit()
 
             if event.type == KEYDOWN and event.key == K_ESCAPE:
-                logging.info("Escape key pressed. Resetting game.")
-                self.state.reset()
-                self.in_menu = True
-                self.in_rules = False
+                self._return_to_menu()
+                continue
+
+            if (
+                event.type == KEYDOWN
+                and event.key == K_u
+                and not self.in_menu
+                and not self.in_rules
+            ):
+                self._undo()
+                continue
 
             if self.in_menu:
                 self._handle_menu_events(event)
             elif self.in_rules:
                 self._handle_rules_events(event)
+            elif self.pending_promotion:
+                self._handle_promotion_events(event)
             else:
+                if not self.computer_thinking:
+                    self._handle_panel_events(event)
                 if not self.state.game_over and not self.computer_thinking:
                     self._handle_game_events(event)
 
-                if event.type == USEREVENT and self.computer_thinking:
-                    self._handle_computer_move()
+    def _return_to_menu(self):
+        logging.info("Returning to menu")
+        self.state.reset()
+        self.pending_promotion = None
+        self.in_menu = True
+        self.in_rules = False
 
     def _handle_menu_events(self, event: pygame.event.Event):
-        if event.type == MOUSEBUTTONDOWN and event.button == 1:
-            x, y = pygame.mouse.get_pos()
-            button_width = 300
-            center_x = self.screen.get_width() // 2
+        if event.type != MOUSEBUTTONDOWN or event.button != 1:
+            return
 
-            # Match the Y positions with renderer.py's button centers
-            ai_button_y = self.screen.get_height() // 2 - 80
-            if (
-                center_x - button_width // 2 <= x <= center_x + button_width // 2
-                and ai_button_y - 30 <= y <= ai_button_y + 30
-            ):
-                self.game_mode = "ai"
-                self.in_menu = False
-                self.in_rules = False
-                self._play("move")
+        pos = event.pos
+        rects = self.renderer.menu_rects()
 
-            mp_button_y = ai_button_y + 100
-            if (
-                center_x - button_width // 2 <= x <= center_x + button_width // 2
-                and mp_button_y - 30 <= y <= mp_button_y + 30
-            ):
-                self.game_mode = "local"
-                self.in_menu = False
-                self.in_rules = False
+        for key in (ai.EASY, ai.MEDIUM, ai.HARD):
+            if rects[key].collidepoint(pos):
+                self.difficulty = key
                 self._play("move")
+                return
 
-            rules_button_y = mp_button_y + 100
-            if (
-                center_x - button_width // 2 <= x <= center_x + button_width // 2
-                and rules_button_y - 30 <= y <= rules_button_y + 30
-            ):
-                self.in_menu = False
-                self.in_rules = True
-                self._play("move")
+        if rects["ai"].collidepoint(pos):
+            self.game_mode = "ai"
+            self.in_menu = False
+            self._play("move")
+        elif rects["local"].collidepoint(pos):
+            self.game_mode = "local"
+            self.in_menu = False
+            self._play("move")
+        elif rects["rules"].collidepoint(pos):
+            self.in_menu = False
+            self.in_rules = True
+            self._play("move")
 
     def _handle_rules_events(self, event: pygame.event.Event):
-        if event.type == MOUSEBUTTONDOWN and event.button == 1:
-            x, y = pygame.mouse.get_pos()
-            button_width = 200
-            button_height = 50
-            back_rect = pygame.Rect(
-                20,  # x position
-                self.screen.get_height() - 70,  # y position
-                button_width,
-                button_height,
-            )
-            if back_rect.collidepoint(x, y):
-                self.in_rules = False
-                self.in_menu = True
-                self._play("move")
+        if event.type != MOUSEBUTTONDOWN or event.button != 1:
+            return
+        if self.renderer.rules_back_rect().collidepoint(event.pos):
+            self.in_rules = False
+            self.in_menu = True
+            self._play("move")
+
+    def _handle_panel_events(self, event: pygame.event.Event):
+        if event.type != MOUSEBUTTONDOWN or event.button != 1:
+            return
+
+        pos = event.pos
+        buttons = self.renderer.panel_button_rects()
+        if buttons["undo"].collidepoint(pos):
+            self._undo()
+        elif buttons["menu"].collidepoint(pos):
+            self._return_to_menu()
+
+    def _handle_promotion_events(self, event: pygame.event.Event):
+        if event.type != MOUSEBUTTONDOWN or event.button != 1:
+            return
+
+        pos = event.pos
+        for piece_type, rect in self.renderer.promotion_rects():
+            if rect.collidepoint(pos):
+                start, end = self.pending_promotion
+                self.pending_promotion = None
+                if self.state.make_move(start, end, promotion=piece_type):
+                    self._play("promote")
+                return
+
+    def _undo(self):
+        """Take back the last move; in AI mode take back the reply too."""
+        if self.computer_thinking or not self.state.can_undo():
+            return
+
+        self.pending_promotion = None
+        self.state.undo()
+        # Undo the computer's reply as well, so it stays the player's turn.
+        if self.game_mode == "ai" and not self.state.is_white_turn:
+            self.state.undo()
+        self._play("move")
 
     def _handle_game_events(self, event: pygame.event.Event):
         if event.type == MOUSEBUTTONDOWN and event.button == 1:
-            logging.debug(f"Mouse button down event at {pygame.mouse.get_pos()}")
-            self._handle_mouse_down(pygame.mouse.get_pos())
+            self._handle_mouse_down(event.pos)
 
         elif event.type == MOUSEMOTION and event.buttons[0]:
-            logging.debug("Mouse dragging started")
             if self.state.selected_piece:
                 self.state.dragging = True
 
         elif event.type == MOUSEBUTTONUP and event.button == 1:
-            logging.debug(f"Mouse button up event at {pygame.mouse.get_pos()}")
-            self._handle_mouse_up(pygame.mouse.get_pos())
+            self._handle_mouse_up(event.pos)
+
+    def _human_to_move(self) -> bool:
+        return self.game_mode == "local" or self.state.is_white_turn
 
     def _handle_mouse_down(self, pos: Tuple[int, int]):
-        if self.game_mode == "local" or (
-            self.game_mode == "ai" and self.state.is_white_turn
-        ):
-            square = self._pos_to_square(pos)
-            piece = self.state.board.get_piece(square)
-            logging.debug(f"Clicked on square: {square}, piece: {piece}")
+        if not self._human_to_move():
+            return
 
-            # If a piece is already selected (two-click mode)
-            if self.state.selected_piece is not None:
-                # If clicking on a valid target square, make the move
-                if square in self.state.possible_moves:
-                    logging.info(
-                        f"Making move from {self.state.selected_piece} to {square} (two-click)"
-                    )
-                    if self.state.make_move(self.state.selected_piece, square):
-                        self._trigger_computer_move()
-                        self._play_move_sound()
-                # Reset selection
-                self.state.selected_piece = None
-                self.state.possible_moves = set()
-                return
+        square = self.renderer.square_at(pos)
+        if square is None:
+            return
 
-            # If clicking on a valid piece, select it (don't start dragging yet)
-            if piece and piece.is_white == self.state.is_white_turn:
-                logging.info(f"Selected piece at {square}")
-                self.state.drag_start = square
-                self.state.selected_piece = square
-                self.state.possible_moves = self.state.get_legal_moves(square)
-            else:
-                self.state.selected_piece = None
-                self.state.possible_moves = set()
+        piece = self.state.board.get_piece(square)
+
+        # Second click of a click-click move.
+        if self.state.selected_piece is not None:
+            if square in self.state.possible_moves:
+                self._attempt_move(self.state.selected_piece, square)
+            self.state.selected_piece = None
+            self.state.possible_moves = set()
+            return
+
+        if piece and piece.is_white == self.state.is_white_turn:
+            self.state.drag_start = square
+            self.state.selected_piece = square
+            self.state.possible_moves = self.state.get_legal_moves(square)
+        else:
+            self.state.selected_piece = None
+            self.state.possible_moves = set()
 
     def _handle_mouse_up(self, pos: Tuple[int, int]):
         if not self.state.dragging:
             return
 
-        end_square = self._pos_to_square(pos)
-        logging.debug(f"Mouse up at {pos}, converted to square {end_square}")
-        if self.state.selected_piece and end_square in self.state.possible_moves:
-            logging.info(
-                f"Making move from {self.state.selected_piece} to {end_square} (drag)"
-            )
-            if self.state.make_move(self.state.selected_piece, end_square):
-                self._trigger_computer_move()
-                self._play_move_sound()
+        end_square = self.renderer.square_at(pos)
+        if (
+            end_square is not None
+            and self.state.selected_piece
+            and end_square in self.state.possible_moves
+        ):
+            self._attempt_move(self.state.selected_piece, end_square)
 
         self.state.dragging = False
         self.state.drag_start = None
-        self.state.selected_piece = None  # Reset selected piece after move
-        self.state.possible_moves = set()  # Clear possible moves
+        self.state.selected_piece = None
+        self.state.possible_moves = set()
 
-    def _trigger_computer_move(self):
-        if self.game_mode == "ai" and not self.state.is_white_turn:
-            if not self.state.game_over and not self.state.is_white_turn:
-                logging.info("Triggering computer move")
-                self.computer_thinking = True
-                pygame.time.set_timer(USEREVENT, 1000)
-        else:
-            self.computer_thinking = False
+    def _attempt_move(self, start: Tuple[int, int], end: Tuple[int, int]):
+        """Play a human move, pausing for a promotion choice when needed."""
+        if self.state.is_promotion(start, end):
+            self.state.dragging = False
+            self.state.selected_piece = None
+            self.state.possible_moves = set()
+            self.pending_promotion = (start, end)
+            return
 
-    def _handle_computer_move(self):
-        logging.info("Computer is making a move")
-        legal_moves = []
-        for r in range(8):
-            for c in range(8):
-                piece = self.state.board.get_piece((r, c))
-                if piece and not piece.is_white:
-                    moves = self.state.get_legal_moves((r, c))
-                    legal_moves.extend(((r, c), move) for move in moves)
-
-        if legal_moves:
-            start, end = random.choice(legal_moves)
-            logging.info(f"Computer moving from {start} to {end}")
-            self.state.make_move(start, end)
+        if self.state.make_move(start, end):
             self._play_move_sound()
 
-        pygame.time.set_timer(USEREVENT, 0)
+    # ------------------------------------------------------------- computer
+
+    def _computer_to_move(self) -> bool:
+        return (
+            self.game_mode == "ai"
+            and not self.in_menu
+            and not self.in_rules
+            and not self.state.game_over
+            and not self.state.is_white_turn
+            and not self.pending_promotion
+        )
+
+    async def _make_computer_move(self):
+        self.computer_thinking = True
+        # Paint the "thinking" state before the search starts blocking.
+        self._update_display()
+        await asyncio.sleep(0)
+
+        try:
+            move = await ai.choose_move(self.state.board, False, self.difficulty)
+        except Exception:
+            logging.exception("Computer move failed; falling back to no move")
+            move = None
+
+        if move and not self.in_menu:
+            self.state.make_move(move[0], move[1], promotion=PieceType.QUEEN)
+            self._play_move_sound()
+
         self.computer_thinking = False
+
+    # -------------------------------------------------------------- display
 
     def _update_display(self):
         if self.in_menu:
-            self.renderer.render_menu(self.screen)
+            self.renderer.render_menu(self.screen, self.difficulty)
         elif self.in_rules:
             self.renderer.render_rules(self.screen)
         else:
-            self.renderer.render(self.screen, self.state)
+            self.renderer.render(
+                self.screen,
+                self.state,
+                game_mode=self.game_mode,
+                difficulty=self.difficulty,
+                thinking=self.computer_thinking,
+                promoting=self.pending_promotion is not None,
+            )
         pygame.display.flip()
-
-    def _pos_to_square(self, pos: Tuple[int, int]) -> Tuple[int, int]:
-        x, y = pos
-        return (y // self.renderer.square_size, x // self.renderer.square_size)
 
     def _play_move_sound(self):
         """Determine and play appropriate sound effect for the last move"""
@@ -270,27 +321,22 @@ class ChessApp:
             self._play("checkmate")
             return
 
-        in_check = self.state.board.is_in_check(self.state.is_white_turn)
-        if in_check:
+        if self.state.board.is_in_check(self.state.is_white_turn):
             self._play("check")
             return
 
-        # Check for special move types
-        piece = self.state.board.get_piece(self.state.last_move[1])
-        start, end = self.state.last_move
+        if not self.state.last_move:
+            return
 
-        # Check for castling
+        start, end = self.state.last_move
+        piece = self.state.board.get_piece(end)
+
         if piece and piece.type == PieceType.KING and abs(end[1] - start[1]) == 2:
             self._play("castle")
-            return
-
-        # Check for capture
-        if self.state.last_capture:
+        elif self.state.last_capture:
             self._play("capture")
-            return
-
-        # Default move sound
-        self._play("move")
+        else:
+            self._play("move")
 
 
 async def main():

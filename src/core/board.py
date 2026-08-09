@@ -48,6 +48,86 @@ class ChessBoard:
             return self.board[row][col]
         return None
 
+    def snapshot(self) -> Tuple:
+        """Cheap, exact copy of the position, for undo and for AI search.
+
+        Faster than copy.deepcopy because Piece carries only three plain fields.
+        """
+        return tuple(
+            tuple(
+                None if p is None else (p.type, p.is_white, p.has_moved)
+                for p in row
+            )
+            for row in self.board
+        )
+
+    def restore(self, snap: Tuple):
+        """Restore a position produced by snapshot()."""
+        for r, row in enumerate(snap):
+            for c, cell in enumerate(row):
+                self.board[r][c] = (
+                    None if cell is None else Piece(cell[0], cell[1], cell[2])
+                )
+
+    def apply_move(
+        self,
+        start: Tuple[int, int],
+        end: Tuple[int, int],
+        promotion: PieceType = PieceType.QUEEN,
+    ):
+        """Apply a move including Chess 2's special cases.
+
+        Shared by GameState and the AI search so both obey exactly the same
+        rules. Assumes the move has already been validated.
+        """
+        piece = self.get_piece(start)
+        if not piece:
+            return
+
+        # Spy conversion: the spy flips an enemy piece and dies doing it.
+        if piece.type == PieceType.SPY:
+            target = self.get_piece(end)
+            if target and target.is_white != piece.is_white:
+                target.is_white = piece.is_white
+                self.board[start[0]][start[1]] = None
+                return
+
+        self.move_piece(start, end)
+
+        # Castling moves the rook alongside the king.
+        if piece.type == PieceType.KING and abs(end[1] - start[1]) == 2:
+            row = start[0]
+            if end[1] > start[1]:
+                self.move_piece((row, 7), (row, end[1] - 1))
+            else:
+                self.move_piece((row, 0), (row, end[1] + 1))
+
+        # Pawn promotion.
+        if piece.type == PieceType.PAWN and end[0] in (0, 7):
+            self.board[end[0]][end[1]] = Piece(promotion, piece.is_white, True)
+
+    def legal_moves_for(self, is_white: bool) -> List[Tuple[Tuple[int, int], Tuple[int, int]]]:
+        """Every legal (start, end) for a colour, ignoring whose turn it is."""
+        moves = []
+        for r in range(8):
+            for c in range(8):
+                piece = self.board[r][c]
+                if not piece or piece.is_white != is_white:
+                    continue
+                for end in self.get_moves((r, c)):
+                    captured = self.board[end[0]][end[1]]
+                    self.board[end[0]][end[1]] = piece
+                    self.board[r][c] = None
+
+                    safe = not self.is_in_check(is_white)
+
+                    self.board[r][c] = piece
+                    self.board[end[0]][end[1]] = captured
+
+                    if safe:
+                        moves.append(((r, c), end))
+        return moves
+
     def move_piece(
         self, start: Tuple[int, int], end: Tuple[int, int], convert: bool = False
     ):
@@ -378,12 +458,14 @@ class ChessBoard:
         if not king_pos:
             return False
 
-        # Check if any enemy piece can capture the king
+        # Check if any enemy piece can capture the king. Castling targets are
+        # empty squares by definition, so skipping castling generation here
+        # cannot change the answer -- it just avoids a lot of wasted work.
         for r in range(8):
             for c in range(8):
-                piece = self.get_piece((r, c))
+                piece = self.board[r][c]
                 if piece and piece.is_white != is_white:
-                    if king_pos in self.get_moves((r, c)):
+                    if king_pos in self.get_moves((r, c), check_castling=False):
                         return True
         return False
 

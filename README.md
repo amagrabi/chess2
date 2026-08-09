@@ -15,6 +15,15 @@ The last patch for chess was probably shipped over 100 years ago, so it's time f
 * Pawns can now move and capture both forwards and diagonally, like normal people. But they still can't move backwards. That would be ridiculous.
 
 
+## Play
+
+Play in your browser at **[chesstwo.pages.dev](https://chesstwo.pages.dev/)** — no install needed.
+The first load takes a moment while the Python runtime downloads.
+
+Pick Easy, Medium or Hard for the computer opponent. Easy is the original
+move-at-random opponent; Medium and Hard actually search ahead. Take back a move
+with the Undo button or the `U` key.
+
 ## Installation
 
 ### Option 1: Executables

@@ -1,10 +1,18 @@
-from typing import Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import pygame
 
-from core.piece import Piece
-from game.state import GameState
+from core.piece import Piece, PieceType
+from game.state import PROMOTION_CHOICES, GameState
 from utils import _resource_path
+
+# The board is square; the panel beside it holds the move list and buttons.
+BOARD_SIZE = 800
+PANEL_WIDTH = 320
+WINDOW_WIDTH = BOARD_SIZE + PANEL_WIDTH
+WINDOW_HEIGHT = BOARD_SIZE
+
+DIFFICULTY_LABELS = (("easy", "Easy"), ("medium", "Medium"), ("hard", "Hard"))
 
 
 class GUIRenderer:
@@ -18,12 +26,20 @@ class GUIRenderer:
         "black_piece": (0, 0, 0),
         "text": (0, 0, 0),
         "labels": (70, 70, 70),
+        "panel": (38, 30, 24),
+        "panel_text": (222, 208, 186),
+        "panel_muted": (140, 124, 104),
+        "button": (110, 78, 48),
+        "button_active": (150, 110, 66),
+        "button_disabled": (66, 54, 44),
+        "accent": (203, 174, 122),
     }
 
-    def __init__(self, screen_width: int, screen_height: int):
+    def __init__(self, screen_width: int = WINDOW_WIDTH, screen_height: int = WINDOW_HEIGHT):
         self.screen_width = screen_width
         self.screen_height = screen_height
-        self.square_size = screen_width // 8
+        self.board_size = min(screen_height, screen_width - PANEL_WIDTH)
+        self.square_size = self.board_size // 8
 
         try:
             self.font = pygame.font.Font(_resource_path("assets/FreeSerif.ttf"), 64)
@@ -33,19 +49,34 @@ class GUIRenderer:
 
         self.game_over_font = pygame.font.Font(None, 74)
         self.info_font = pygame.font.Font(None, 36)
+        self.small_font = pygame.font.Font(None, 26)
+        self.mono_font = pygame.font.Font(None, 24)
 
         self.menu_background = self._load_menu_background()
+
+    # ------------------------------------------------------------- background
 
     def _load_menu_background(self):
         """Load and scale the menu backdrop once, so it isn't decoded every frame."""
         try:
-            bg = pygame.image.load(_resource_path("assets/menu_background.jpg"))
-            return pygame.transform.scale(
-                bg.convert(), (self.screen_width, self.screen_height)
-            )
+            bg = pygame.image.load(_resource_path("assets/menu_background.jpg")).convert()
         except Exception as e:
             print(f"Menu background not available ({e}). Using plain background.")
             return None
+
+        # Scale to cover the window without distorting the artwork, then centre.
+        bw, bh = bg.get_size()
+        scale = max(self.screen_width / bw, self.screen_height / bh)
+        scaled = pygame.transform.smoothscale(bg, (int(bw * scale), int(bh * scale)))
+        surface = pygame.Surface((self.screen_width, self.screen_height))
+        surface.blit(
+            scaled,
+            (
+                (self.screen_width - scaled.get_width()) // 2,
+                (self.screen_height - scaled.get_height()) // 2,
+            ),
+        )
+        return surface
 
     def _draw_menu_background(self, screen: pygame.Surface):
         if self.menu_background is not None:
@@ -53,70 +84,115 @@ class GUIRenderer:
         else:
             screen.fill(self.COLORS["background"])
 
-    def render(self, screen: pygame.Surface, state: GameState):
-        self._draw_board(screen)
-        self._draw_highlights(screen, state)
-        self._draw_pieces(screen, state)
-        if state.game_over:
-            self._draw_game_over(screen, state)
-        self._draw_labels(screen)
+    # ---------------------------------------------------------------- geometry
 
-    def render_menu(self, screen: pygame.Surface):
+    def menu_rects(self) -> Dict[str, pygame.Rect]:
+        """Button rectangles for the menu, shared by drawing and hit-testing."""
+        centre_x = self.screen_width // 2
+        top = self.screen_height // 2 - 110
+        rects = {
+            "ai": pygame.Rect(0, 0, 320, 60),
+            "local": pygame.Rect(0, 0, 320, 60),
+            "rules": pygame.Rect(0, 0, 320, 60),
+        }
+        rects["ai"].center = (centre_x, top)
+        rects["local"].center = (centre_x, top + 150)
+        rects["rules"].center = (centre_x, top + 225)
+
+        # Difficulty chips sit directly under the "vs. Computer" button.
+        chip_width, gap = 100, 8
+        total = len(DIFFICULTY_LABELS) * chip_width + (len(DIFFICULTY_LABELS) - 1) * gap
+        x = centre_x - total // 2
+        for key, _ in DIFFICULTY_LABELS:
+            rects[key] = pygame.Rect(x, top + 45, chip_width, 38)
+            x += chip_width + gap
+        return rects
+
+    def rules_back_rect(self) -> pygame.Rect:
+        return pygame.Rect(20, self.screen_height - 70, 200, 50)
+
+    def panel_button_rects(self) -> Dict[str, pygame.Rect]:
+        x = self.board_size + 24
+        width = PANEL_WIDTH - 48
+        return {
+            "undo": pygame.Rect(x, self.screen_height - 148, width, 52),
+            "menu": pygame.Rect(x, self.screen_height - 84, width, 52),
+        }
+
+    def promotion_rects(self) -> List[Tuple[PieceType, pygame.Rect]]:
+        size = 110
+        gap = 12
+        total = len(PROMOTION_CHOICES) * size + (len(PROMOTION_CHOICES) - 1) * gap
+        x = self.board_size // 2 - total // 2
+        y = self.board_size // 2 - size // 2
+        out = []
+        for piece_type in PROMOTION_CHOICES:
+            out.append((piece_type, pygame.Rect(x, y, size, size)))
+            x += size + gap
+        return out
+
+    def square_at(self, pos: Tuple[int, int]) -> Optional[Tuple[int, int]]:
+        """Screen position -> board square, or None if outside the board."""
+        x, y = pos
+        if not (0 <= x < self.board_size and 0 <= y < self.board_size):
+            return None
+        return (y // self.square_size, x // self.square_size)
+
+    # ------------------------------------------------------------------ menu
+
+    def _draw_button(
+        self,
+        screen: pygame.Surface,
+        rect: pygame.Rect,
+        label: str,
+        font: pygame.font.Font,
+        colour=None,
+        text_colour=None,
+    ):
+        pygame.draw.rect(screen, colour or self.COLORS["button"], rect, border_radius=6)
+        text = font.render(label, True, text_colour or self.COLORS["white_piece"])
+        screen.blit(text, text.get_rect(center=rect.center))
+
+    def render_menu(self, screen: pygame.Surface, difficulty: str = "medium"):
         self._draw_menu_background(screen)
+        rects = self.menu_rects()
 
-        # Draw title text
         title = self.game_over_font.render("Chess 2", True, self.COLORS["text"])
-        title_rect = title.get_rect(
-            center=(self.screen_width // 2, self.screen_height // 4)
+        screen.blit(
+            title,
+            title.get_rect(center=(self.screen_width // 2, self.screen_height // 4)),
         )
-        screen.blit(title, title_rect)
 
-        # Draw buttons
-        button_width = 300
-        button_height = 60
-        y_center = self.screen_height // 2 - 80
-
-        # AI Button
-        ai_rect = pygame.Rect(0, 0, button_width, button_height)
-        ai_rect.center = (self.screen_width // 2, y_center)
-        pygame.draw.rect(screen, self.COLORS["dark_square"], ai_rect)
-        ai_text = self.info_font.render(
-            "Play vs. Computer", True, self.COLORS["white_piece"]
-        )
-        screen.blit(ai_text, ai_text.get_rect(center=ai_rect.center))
-
-        # Local MP Button
-        mp_rect = pygame.Rect(0, 0, button_width, button_height)
-        mp_rect.center = (self.screen_width // 2, y_center + 100)
-        pygame.draw.rect(screen, self.COLORS["dark_square"], mp_rect)
-        mp_text = self.info_font.render(
-            "Local Multiplayer", True, self.COLORS["white_piece"]
-        )
-        screen.blit(mp_text, mp_text.get_rect(center=mp_rect.center))
-
-        # Rules Button
-        rules_rect = pygame.Rect(0, 0, button_width, button_height)
-        rules_rect.center = (self.screen_width // 2, y_center + 200)
-        pygame.draw.rect(screen, self.COLORS["dark_square"], rules_rect)
-        rules_text = self.info_font.render("Rules", True, self.COLORS["white_piece"])
-        screen.blit(rules_text, rules_text.get_rect(center=rules_rect.center))
+        self._draw_button(screen, rects["ai"], "Play vs. Computer", self.info_font)
+        for key, label in DIFFICULTY_LABELS:
+            selected = key == difficulty
+            self._draw_button(
+                screen,
+                rects[key],
+                label,
+                self.small_font,
+                colour=self.COLORS["button_active"]
+                if selected
+                else self.COLORS["button_disabled"],
+                text_colour=self.COLORS["white_piece"]
+                if selected
+                else self.COLORS["panel_muted"],
+            )
+        self._draw_button(screen, rects["local"], "Local Multiplayer", self.info_font)
+        self._draw_button(screen, rects["rules"], "Rules", self.info_font)
 
     def render_rules(self, screen: pygame.Surface):
         self._draw_menu_background(screen)
 
-        # Add semi-transparent white overlay for better readability
         overlay = pygame.Surface(
             (self.screen_width, self.screen_height), pygame.SRCALPHA
         )
-        overlay.fill((255, 255, 255, 90))  # White with 70% opacity
+        overlay.fill((255, 255, 255, 110))
         screen.blit(overlay, (0, 0))
 
-        # Title
         title = self.game_over_font.render("Chess 2 Rules", True, self.COLORS["text"])
-        title_rect = title.get_rect(center=(self.screen_width // 2, 50))
-        screen.blit(title, title_rect)
+        screen.blit(title, title.get_rect(center=(self.screen_width // 2, 50)))
 
-        # Rules text
         rules = [
             "• Knights can now jump in all directions, because real horses stopped using L-shaped movement centuries ago.",
             "• Stalemate is no longer a draw. If you can't move, that's a you problem and your opponent gets another turn.",
@@ -127,44 +203,176 @@ class GUIRenderer:
             "• Pawns can now move and capture both forwards and diagonally, like normal people. But they still can't move backwards. That would be ridiculous.",
         ]
 
-        # Use a smaller font for rules text
         rules_font = pygame.font.Font(None, 28)
         y = 120
-        line_height = 40
         padding = 20
-
         for rule in rules:
-            # Split long lines into multiple lines
-            words = rule.split()
-            lines = []
-            current_line = words[0]
+            for line in self._wrap(rule, rules_font, self.screen_width - 2 * padding):
+                screen.blit(
+                    rules_font.render(line, True, self.COLORS["text"]), (padding, y)
+                )
+                y += 40
 
-            for word in words[1:]:
-                test_line = current_line + " " + word
-                test_surface = rules_font.render(test_line, True, self.COLORS["text"])
-                if test_surface.get_width() < self.screen_width - 2 * padding:
-                    current_line = test_line
-                else:
-                    lines.append(current_line)
-                    current_line = word
-            lines.append(current_line)
+        self._draw_button(screen, self.rules_back_rect(), "Back", self.info_font)
 
-            # Render each line
-            for line in lines:
-                text = rules_font.render(line, True, self.COLORS["text"])
-                text_rect = text.get_rect(x=padding, y=y)
-                screen.blit(text, text_rect)
-                y += line_height
+    @staticmethod
+    def _wrap(text: str, font: pygame.font.Font, max_width: int) -> List[str]:
+        words = text.split()
+        if not words:
+            return []
+        lines, current = [], words[0]
+        for word in words[1:]:
+            candidate = f"{current} {word}"
+            if font.size(candidate)[0] < max_width:
+                current = candidate
+            else:
+                lines.append(current)
+                current = word
+        lines.append(current)
+        return lines
 
-        # Back button
-        button_width = 200
-        button_height = 50
-        back_rect = pygame.Rect(
-            20, self.screen_height - 70, button_width, button_height
+    # ------------------------------------------------------------------ game
+
+    def render(
+        self,
+        screen: pygame.Surface,
+        state: GameState,
+        game_mode: str = "ai",
+        difficulty: str = "medium",
+        thinking: bool = False,
+        promoting: bool = False,
+    ):
+        self._draw_board(screen)
+        self._draw_highlights(screen, state)
+        self._draw_pieces(screen, state)
+        self._draw_labels(screen)
+        self._draw_panel(screen, state, game_mode, difficulty, thinking)
+        if promoting:
+            self._draw_promotion(screen, state)
+        elif state.game_over:
+            self._draw_game_over(screen, state)
+
+    def _draw_panel(
+        self,
+        screen: pygame.Surface,
+        state: GameState,
+        game_mode: str,
+        difficulty: str,
+        thinking: bool,
+    ):
+        panel = pygame.Rect(self.board_size, 0, PANEL_WIDTH, self.screen_height)
+        pygame.draw.rect(screen, self.COLORS["panel"], panel)
+
+        x = self.board_size + 24
+        y = 28
+
+        heading = self.info_font.render("Chess 2", True, self.COLORS["accent"])
+        screen.blit(heading, (x, y))
+        y += 44
+
+        if game_mode == "ai":
+            subtitle = f"vs. Computer ({difficulty.capitalize()})"
+        else:
+            subtitle = "Local Multiplayer"
+        screen.blit(
+            self.small_font.render(subtitle, True, self.COLORS["panel_muted"]), (x, y)
         )
-        pygame.draw.rect(screen, self.COLORS["dark_square"], back_rect)
-        back_text = self.info_font.render("Back", True, self.COLORS["white_piece"])
-        screen.blit(back_text, back_text.get_rect(center=back_rect.center))
+        y += 34
+
+        if thinking:
+            status = "Computer is thinking..."
+        elif state.game_over:
+            status = {
+                "white_wins": "White wins",
+                "black_wins": "Black wins",
+                "draw": "Draw",
+            }.get(state.game_result, "Game over")
+        else:
+            status = "White to move" if state.is_white_turn else "Black to move"
+            if state.board.is_in_check(state.is_white_turn):
+                status += " - check!"
+        screen.blit(
+            self.small_font.render(status, True, self.COLORS["panel_text"]), (x, y)
+        )
+        y += 40
+
+        pygame.draw.line(
+            screen, self.COLORS["button_disabled"], (x, y), (x + PANEL_WIDTH - 48, y)
+        )
+        y += 16
+
+        self._draw_move_list(screen, state, x, y)
+
+        buttons = self.panel_button_rects()
+        undo_enabled = state.can_undo()
+        self._draw_button(
+            screen,
+            buttons["undo"],
+            "Undo",
+            self.info_font,
+            colour=self.COLORS["button"]
+            if undo_enabled
+            else self.COLORS["button_disabled"],
+            text_colour=self.COLORS["white_piece"]
+            if undo_enabled
+            else self.COLORS["panel_muted"],
+        )
+        self._draw_button(screen, buttons["menu"], "Main Menu", self.info_font)
+
+    def _draw_move_list(
+        self, screen: pygame.Surface, state: GameState, x: int, y: int
+    ):
+        available = self.screen_height - 170 - y
+        line_height = 24
+        max_rows = max(available // line_height, 0)
+
+        rows = []
+        for i in range(0, len(state.move_log), 2):
+            number = i // 2 + 1
+            white = state.move_log[i]
+            black = state.move_log[i + 1] if i + 1 < len(state.move_log) else ""
+            rows.append(f"{number:>3}. {white:<10}{black}")
+
+        if not rows:
+            screen.blit(
+                self.mono_font.render(
+                    "No moves yet", True, self.COLORS["panel_muted"]
+                ),
+                (x, y),
+            )
+            return
+
+        for row in rows[-max_rows:]:
+            screen.blit(
+                self.mono_font.render(row, True, self.COLORS["panel_text"]), (x, y)
+            )
+            y += line_height
+
+    def _draw_promotion(self, screen: pygame.Surface, state: GameState):
+        overlay = pygame.Surface((self.board_size, self.board_size), pygame.SRCALPHA)
+        overlay.fill((20, 15, 12, 190))
+        screen.blit(overlay, (0, 0))
+
+        prompt = self.info_font.render(
+            "Promote to:", True, self.COLORS["panel_text"]
+        )
+        screen.blit(
+            prompt,
+            prompt.get_rect(
+                center=(self.board_size // 2, self.board_size // 2 - 100)
+            ),
+        )
+
+        # The promoting side is the one that just moved, i.e. not the side to move.
+        is_white = not state.is_white_turn
+        for piece_type, rect in self.promotion_rects():
+            pygame.draw.rect(screen, self.COLORS["light_square"], rect, border_radius=8)
+            symbol = Piece(piece_type, is_white).symbol
+            colour = (
+                self.COLORS["white_piece"] if is_white else self.COLORS["black_piece"]
+            )
+            text = self.font.render(symbol, True, colour)
+            screen.blit(text, text.get_rect(center=rect.center))
 
     def _draw_board(self, screen: pygame.Surface):
         for row in range(8):
@@ -186,12 +394,12 @@ class GUIRenderer:
                 )
 
     def _draw_highlights(self, screen: pygame.Surface, state: GameState):
+        if state.last_move:
+            self._draw_last_move_highlight(screen, state.last_move)
+
         if state.selected_piece:
             self._draw_selected_highlight(screen, state.selected_piece)
             self._draw_legal_moves(screen, state.possible_moves)
-
-        if state.last_move:
-            self._draw_last_move_highlight(screen, state.last_move)
 
     def _draw_selected_highlight(self, screen: pygame.Surface, pos: Tuple[int, int]):
         surface = pygame.Surface((self.square_size, self.square_size), pygame.SRCALPHA)
@@ -240,7 +448,6 @@ class GUIRenderer:
             )
         )
 
-        # Draw shadow
         shadow_surface = self.font.render(piece.symbol, True, (80, 80, 80))
         screen.blit(shadow_surface, text_rect.move(1.5, 1.5))
         screen.blit(text_surface, text_rect)
@@ -258,8 +465,7 @@ class GUIRenderer:
         )
         text_surface = self.font.render(piece.symbol, True, text_color)
         mouse_pos = pygame.mouse.get_pos()
-        text_rect = text_surface.get_rect(center=mouse_pos)
-        screen.blit(text_surface, text_rect)
+        screen.blit(text_surface, text_surface.get_rect(center=mouse_pos))
 
     def _draw_labels(self, screen: pygame.Surface):
         label_font = pygame.font.Font(None, 16)
@@ -268,47 +474,49 @@ class GUIRenderer:
                 if row == 7:
                     label = chr(ord("a") + col)
                     text_surface = label_font.render(label, True, self.COLORS["labels"])
-                    text_rect = text_surface.get_rect(
-                        bottomright=(
-                            (col + 1) * self.square_size - 2,
-                            (row + 1) * self.square_size - 2,
-                        )
+                    screen.blit(
+                        text_surface,
+                        text_surface.get_rect(
+                            bottomright=(
+                                (col + 1) * self.square_size - 2,
+                                (row + 1) * self.square_size - 2,
+                            )
+                        ),
                     )
-                    screen.blit(text_surface, text_rect)
                 if col == 7:
                     label = str(8 - row)
                     text_surface = label_font.render(label, True, self.COLORS["labels"])
-                    text_rect = text_surface.get_rect(
-                        topright=(
-                            (col + 1) * self.square_size - 2,
-                            row * self.square_size + 2,
-                        )
+                    screen.blit(
+                        text_surface,
+                        text_surface.get_rect(
+                            topright=(
+                                (col + 1) * self.square_size - 2,
+                                row * self.square_size + 2,
+                            )
+                        ),
                     )
-                    screen.blit(text_surface, text_rect)
 
     def _draw_game_over(self, screen: pygame.Surface, state: GameState):
         if not state.game_result:
             return
 
-        # Game result text
         texts = {
             "white_wins": "Checkmate, white wins!",
             "black_wins": "Checkmate, black wins!",
             "draw": "Draw by threefold repetition!",
         }
-        text = self.game_over_font.render(
-            texts[state.game_result], True, self.COLORS["text"]
-        )
-        text_rect = text.get_rect(
-            center=(self.screen_width // 2, self.screen_height // 2)
-        )
-        screen.blit(text, text_rect)
+        centre_x = self.board_size // 2
 
-        # Play again prompt
+        banner = pygame.Surface((self.board_size, 160), pygame.SRCALPHA)
+        banner.fill((20, 15, 12, 200))
+        screen.blit(banner, (0, self.board_size // 2 - 80))
+
+        text = self.game_over_font.render(
+            texts[state.game_result], True, self.COLORS["panel_text"]
+        )
+        screen.blit(text, text.get_rect(center=(centre_x, self.board_size // 2 - 20)))
+
         prompt = self.info_font.render(
-            "Press ESC to play again", True, self.COLORS["text"]
+            "Press ESC for the menu", True, self.COLORS["panel_muted"]
         )
-        prompt_rect = prompt.get_rect(
-            center=(self.screen_width // 2, self.screen_height // 2 + 100)
-        )
-        screen.blit(prompt, prompt_rect)
+        screen.blit(prompt, prompt.get_rect(center=(centre_x, self.board_size // 2 + 40)))

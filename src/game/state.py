@@ -1,9 +1,32 @@
 import logging
 from collections import defaultdict
-from typing import Dict, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 from core.board import ChessBoard
 from core.piece import Piece, PieceType
+
+PIECE_LETTERS = {
+    PieceType.KING: "K",
+    PieceType.QUEEN: "Q",
+    PieceType.ROOK: "R",
+    PieceType.BISHOP: "B",
+    PieceType.KNIGHT: "N",
+    PieceType.SPY: "S",
+    PieceType.PAWN: "",
+}
+
+PROMOTION_CHOICES = (
+    PieceType.QUEEN,
+    PieceType.ROOK,
+    PieceType.BISHOP,
+    PieceType.KNIGHT,
+)
+
+
+def square_name(pos: Tuple[int, int]) -> str:
+    """(row, col) -> algebraic square, e.g. (6, 4) -> 'e2'."""
+    row, col = pos
+    return f"{'abcdefgh'[col]}{8 - row}"
 
 
 class GameState:
@@ -19,8 +42,27 @@ class GameState:
         self.dragging = False
         self.drag_start: Optional[Tuple[int, int]] = None
         self.last_capture = False
+        self.move_log: List[str] = []
+        self._undo_stack: List[dict] = []
 
-    def make_move(self, start: Tuple[int, int], end: Tuple[int, int]) -> bool:
+    # ------------------------------------------------------------------ moves
+
+    def is_promotion(self, start: Tuple[int, int], end: Tuple[int, int]) -> bool:
+        """Would moving start -> end promote a pawn?"""
+        piece = self.board.get_piece(start)
+        return (
+            piece is not None
+            and piece.type == PieceType.PAWN
+            and end[0] in (0, 7)
+            and end in self.get_legal_moves(start)
+        )
+
+    def make_move(
+        self,
+        start: Tuple[int, int],
+        end: Tuple[int, int],
+        promotion: PieceType = PieceType.QUEEN,
+    ) -> bool:
         piece = self.board.get_piece(start)
         if not piece:
             logging.warning(f"Attempted to move a non-existent piece at {start}")
@@ -30,57 +72,105 @@ class GameState:
             logging.warning(f"Illegal move attempted from {start} to {end}")
             return False
 
-        # Track capture before making move
+        self._push_undo()
+
         target_piece = self.board.get_piece(end)
-        self.last_capture = (
+        is_enemy_target = (
             target_piece is not None and target_piece.is_white != piece.is_white
         )
+        # A spy converts rather than captures, and dies doing it.
+        converted = piece.type == PieceType.SPY and is_enemy_target
+        self.last_capture = is_enemy_target and not converted
+
+        piece_type = piece.type
+        promoted = piece_type == PieceType.PAWN and end[0] in (0, 7)
 
         logging.debug(f"Making move from {start} to {end}")
-        self._handle_special_moves(start, end, piece)
+        self.board.apply_move(start, end, promotion)
         self.last_move = (start, end)
         self._update_game_status(piece)
         self.is_white_turn = not self.is_white_turn
+
+        self.move_log.append(
+            self._notate(
+                piece_type,
+                start,
+                end,
+                captured=self.last_capture,
+                converted=converted,
+                promotion=promotion if promoted else None,
+            )
+        )
         return True
 
-    def _handle_special_moves(
-        self, start: Tuple[int, int], end: Tuple[int, int], piece: Piece
-    ):
-        # Spy conversion
-        if piece.type == PieceType.SPY:
-            target = self.board.get_piece(end)
-            if target and target.is_white != piece.is_white:
-                logging.info(f"Spy converted piece at {end}")
-                target.is_white = piece.is_white
-                self.board.board[start[0]][start[1]] = None
-                return
+    def _notate(
+        self,
+        piece_type: PieceType,
+        start: Tuple[int, int],
+        end: Tuple[int, int],
+        captured: bool,
+        converted: bool,
+        promotion: Optional[PieceType],
+    ) -> str:
+        separator = "~" if converted else ("x" if captured else "-")
+        text = (
+            f"{PIECE_LETTERS[piece_type]}{square_name(start)}"
+            f"{separator}{square_name(end)}"
+        )
+        if promotion is not None:
+            text += f"={PIECE_LETTERS[promotion]}"
 
-        # Regular move
-        self.board.move_piece(start, end)
+        # is_white_turn has already flipped, so it now names the side to move.
+        if self.game_over and self.game_result in ("white_wins", "black_wins"):
+            text += "#"
+        elif self.board.is_in_check(self.is_white_turn):
+            text += "+"
+        return text
 
-        # Castling
-        if piece.type == PieceType.KING and abs(end[1] - start[1]) == 2:
-            row = start[0]
-            if end[1] > start[1]:  # Kingside
-                logging.info(f"Kingside castling from {start} to {end}")
-                self.board.move_piece((row, 7), (row, end[1] - 1))
-            else:  # Queenside
-                logging.info(f"Queenside castling from {start} to {end}")
-                self.board.move_piece((row, 0), (row, end[1] + 1))
+    # ------------------------------------------------------------------- undo
 
-        # Pawn promotion
-        if piece.type == PieceType.PAWN and end[0] in [0, 7]:
-            logging.info(f"Pawn promoted to queen at {end}")
-            self.board.board[end[0]][end[1]] = Piece(PieceType.QUEEN, piece.is_white)
+    def _push_undo(self):
+        self._undo_stack.append(
+            {
+                "board": self.board.snapshot(),
+                "is_white_turn": self.is_white_turn,
+                "game_over": self.game_over,
+                "game_result": self.game_result,
+                "last_move": self.last_move,
+                "last_capture": self.last_capture,
+                "position_history": dict(self.position_history),
+                "move_count": len(self.move_log),
+            }
+        )
+
+    def can_undo(self) -> bool:
+        return bool(self._undo_stack)
+
+    def undo(self) -> bool:
+        """Take back a single ply."""
+        if not self._undo_stack:
+            return False
+
+        snap = self._undo_stack.pop()
+        self.board.restore(snap["board"])
+        self.is_white_turn = snap["is_white_turn"]
+        self.game_over = snap["game_over"]
+        self.game_result = snap["game_result"]
+        self.last_move = snap["last_move"]
+        self.last_capture = snap["last_capture"]
+        self.position_history = defaultdict(int, snap["position_history"])
+        del self.move_log[snap["move_count"] :]
+
+        self.selected_piece = None
+        self.possible_moves = set()
+        self.dragging = False
+        self.drag_start = None
+        return True
+
+    # ----------------------------------------------------------------- status
 
     def _update_game_status(self, moved_piece: Piece):
-        # Check checkmate
         opponent_color = not moved_piece.is_white
-        logging.debug(
-            f"Checking game status after move by {'white' if moved_piece.is_white else 'black'}"
-        )
-        logging.debug(f"has_legal_moves: {self.board.has_legal_moves(opponent_color)}")
-        logging.debug(f"is_in_check: {self.board.is_in_check(opponent_color)}")
 
         if not self.board.has_legal_moves(opponent_color):
             if self.board.is_in_check(opponent_color):
@@ -137,5 +227,3 @@ class GameState:
 
     def reset(self):
         self.__init__()
-        if hasattr(self, "game_mode"):
-            self.game_mode = self.game_mode
