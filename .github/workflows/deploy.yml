@@ -24,8 +24,11 @@ jobs:
 
       # --ume_block 0 starts the game immediately instead of waiting for a
       # click to unlock audio; sound still enables itself on first interaction.
+      # web/chess2.tmpl is pygbag's default page template with our own styling.
       - name: Build WebAssembly game
-        run: pygbag --build --disable-sound-format-error --ume_block 0 src
+        run: >
+          pygbag --build --disable-sound-format-error --ume_block 0
+          --template web/chess2.tmpl --title "Chess 2" src
 
       # pygbag can fail without a non-zero exit code, which would silently
       # redeploy a stale build. Fail loudly instead.
