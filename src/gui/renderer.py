@@ -69,21 +69,32 @@ class GUIRenderer:
         self.board_size = min(screen_height, screen_width - PANEL_WIDTH)
         self.square_size = self.board_size // 8
 
-        try:
-            self.font = pygame.font.Font(_resource_path("assets/FreeSerif.ttf"), 72)
-        except Exception as e:
-            print(f"Chess font not found ({e}). Using default font.")
-            self.font = pygame.font.Font(None, 72)
-
-        self.game_over_font = pygame.font.Font(None, 74)
-        self.info_font = pygame.font.Font(None, 36)
-        self.small_font = pygame.font.Font(None, 26)
+        # Everything is set in the bundled serif rather than pygame's built-in
+        # freesansbold, which looks generic next to the painted backdrop.
+        self.font = self._load_font(72)  # chess glyphs
+        self.title_font = self._load_font(96, bold=True)
+        self.game_over_font = self._load_font(64, bold=True)
+        self.heading_font = self._load_font(34, bold=True)
+        self.info_font = self._load_font(32)
+        self.body_font = self._load_font(25)
+        self.small_font = self._load_font(25)
+        # The move list is laid out in columns, so it wants a plain UI face.
         self.mono_font = pygame.font.Font(None, 24)
 
         self.menu_background = self._load_menu_background()
         # Pieces are redrawn every frame; rendering the glyph and its outline
         # each time is wasteful, so cache one surface per (type, colour).
         self._piece_cache = {}
+
+    @staticmethod
+    def _load_font(size: int, bold: bool = False) -> pygame.font.Font:
+        try:
+            font = pygame.font.Font(_resource_path("assets/FreeSerif.ttf"), size)
+        except Exception as e:
+            print(f"Serif font not available ({e}). Using default font.")
+            font = pygame.font.Font(None, size)
+        font.set_bold(bold)
+        return font
 
     # ---------------------------------------------------------------- pieces
 
@@ -214,6 +225,15 @@ class GUIRenderer:
 
     # ------------------------------------------------------------------ menu
 
+    def _draw_title(self, screen: pygame.Surface, text: str, centre_y: int):
+        """Dark serif over a light offset copy: a subtle emboss that lifts the
+        title off the painted backdrop without the sticker look of an outline."""
+        centre_x = self.screen_width // 2
+        highlight = self.title_font.render(text, True, (252, 246, 235))
+        screen.blit(highlight, highlight.get_rect(center=(centre_x + 2, centre_y + 3)))
+        body = self.title_font.render(text, True, (38, 27, 20))
+        screen.blit(body, body.get_rect(center=(centre_x, centre_y)))
+
     def _draw_button(
         self,
         screen: pygame.Surface,
@@ -231,11 +251,7 @@ class GUIRenderer:
         self._draw_menu_background(screen)
         rects = self.menu_rects()
 
-        title = self.game_over_font.render("Chess 2", True, self.COLORS["text"])
-        screen.blit(
-            title,
-            title.get_rect(center=(self.screen_width // 2, self.screen_height // 4)),
-        )
+        self._draw_title(screen, "Chess 2", self.screen_height // 4)
 
         self._draw_button(screen, rects["ai"], "Play vs. Computer", self.info_font)
         for key, label in DIFFICULTY_LABELS:
@@ -261,23 +277,64 @@ class GUIRenderer:
         overlay = pygame.Surface(
             (self.screen_width, self.screen_height), pygame.SRCALPHA
         )
-        overlay.fill((255, 255, 255, 110))
+        overlay.fill((28, 20, 15, 150))
         screen.blit(overlay, (0, 0))
 
-        title = self.game_over_font.render("Chess 2 Rules", True, self.COLORS["text"])
-        screen.blit(title, title.get_rect(center=(self.screen_width // 2, 50)))
+        # Hold the text to a readable column instead of letting it run the full
+        # width of the window.
+        card = pygame.Rect(0, 0, min(self.screen_width - 180, 940), 0)
+        card.centerx = self.screen_width // 2
+        card.top = 120
+        card.height = self.screen_height - card.top - 80
 
-        rules_font = pygame.font.Font(None, 28)
-        y = 120
-        padding = 20
-        for rule in FULL_RULES:
-            for line in self._wrap(rule, rules_font, self.screen_width - 2 * padding):
-                screen.blit(
-                    rules_font.render(line, True, self.COLORS["text"]), (padding, y)
-                )
-                y += 40
+        panel = pygame.Surface(card.size, pygame.SRCALPHA)
+        panel.fill((250, 244, 232, 240))
+        screen.blit(panel, card.topleft)
+        pygame.draw.rect(screen, (150, 122, 88), card, width=2, border_radius=4)
+
+        self._draw_title(screen, "House Rules", 62)
+
+        self._draw_rule_list(
+            screen,
+            card.inflate(-88, -72),
+            self.body_font,
+            (48, 36, 28),
+            bullet_colour=(150, 110, 66),
+        )
 
         self._draw_button(screen, self.rules_back_rect(), "Back", self.info_font)
+
+    def _draw_rule_list(
+        self,
+        screen: pygame.Surface,
+        area: pygame.Rect,
+        font: pygame.font.Font,
+        colour,
+        bullet_colour=None,
+    ):
+        """Render the house rules with a hanging indent under each bullet.
+
+        Wrapped lines line up with the text rather than the bullet, and rules
+        are separated by more space than the lines within one rule, so each
+        reads as its own item.
+        """
+        indent = 30
+        line_height = font.get_linesize() + 4
+        gap = 14
+        y = area.top
+        for rule in FULL_RULES:
+            text = rule.lstrip("•").strip()
+            lines = self._wrap(text, font, area.width - indent)
+            screen.blit(
+                font.render("•", True, bullet_colour or colour), (area.left, y)
+            )
+            for line in lines:
+                screen.blit(
+                    font.render(line, True, colour), (area.left + indent, y)
+                )
+                y += line_height
+            y += gap
+        return y
 
     @staticmethod
     def _wrap(text: str, font: pygame.font.Font, max_width: int) -> List[str]:
@@ -328,18 +385,15 @@ class GUIRenderer:
         title = self.game_over_font.render(
             "House Rules", True, self.COLORS["accent"]
         )
-        screen.blit(title, title.get_rect(center=(self.board_size // 2, 60)))
+        screen.blit(title, title.get_rect(center=(self.board_size // 2, 56)))
 
-        font = pygame.font.Font(None, 28)
-        padding = 40
-        y = 120
-        for rule in FULL_RULES:
-            for line in self._wrap(rule, font, self.board_size - 2 * padding):
-                screen.blit(
-                    font.render(line, True, self.COLORS["panel_text"]), (padding, y)
-                )
-                y += 32
-            y += 10
+        self._draw_rule_list(
+            screen,
+            pygame.Rect(48, 112, self.board_size - 96, self.board_size - 210),
+            self.small_font,
+            self.COLORS["panel_text"],
+            bullet_colour=self.COLORS["accent"],
+        )
 
         self._draw_button(
             screen, self.rules_overlay_close_rect(), "Back to game", self.info_font
@@ -359,7 +413,7 @@ class GUIRenderer:
         x = self.board_size + 24
         y = 28
 
-        heading = self.info_font.render("Chess 2", True, self.COLORS["accent"])
+        heading = self.heading_font.render("Chess 2", True, self.COLORS["accent"])
         screen.blit(heading, (x, y))
         y += 44
 
@@ -447,15 +501,29 @@ class GUIRenderer:
 
         rows = []
         for i in range(0, len(state.move_log), 2):
-            number = i // 2 + 1
-            white = state.move_log[i]
-            black = state.move_log[i + 1] if i + 1 < len(state.move_log) else ""
-            rows.append(f"{number:>3}. {white:<10}{black}")
-
-        for row in rows[-max_rows:]:
-            screen.blit(
-                self.mono_font.render(row, True, self.COLORS["panel_text"]), (x, y)
+            rows.append(
+                (
+                    f"{i // 2 + 1}.",
+                    state.move_log[i],
+                    state.move_log[i + 1] if i + 1 < len(state.move_log) else "",
+                )
             )
+
+        # Explicit columns: the font is proportional, so padded strings would
+        # not line up.
+        for number, white, black in rows[-max_rows:]:
+            screen.blit(
+                self.mono_font.render(number, True, self.COLORS["panel_muted"]), (x, y)
+            )
+            screen.blit(
+                self.mono_font.render(white, True, self.COLORS["panel_text"]),
+                (x + 38, y),
+            )
+            if black:
+                screen.blit(
+                    self.mono_font.render(black, True, self.COLORS["panel_text"]),
+                    (x + 142, y),
+                )
             y += line_height
 
     def _draw_promotion(self, screen: pygame.Surface, state: GameState):
