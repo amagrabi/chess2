@@ -27,12 +27,31 @@ class GUIRenderer:
 
         try:
             self.font = pygame.font.Font(_resource_path("assets/FreeSerif.ttf"), 64)
-        except FileNotFoundError:
-            print("Chess font not found! Using default font.")
+        except Exception as e:
+            print(f"Chess font not found ({e}). Using default font.")
             self.font = pygame.font.Font(None, 64)
 
         self.game_over_font = pygame.font.Font(None, 74)
         self.info_font = pygame.font.Font(None, 36)
+
+        self.menu_background = self._load_menu_background()
+
+    def _load_menu_background(self):
+        """Load and scale the menu backdrop once, so it isn't decoded every frame."""
+        try:
+            bg = pygame.image.load(_resource_path("assets/menu_background.jpg"))
+            return pygame.transform.scale(
+                bg.convert(), (self.screen_width, self.screen_height)
+            )
+        except Exception as e:
+            print(f"Menu background not available ({e}). Using plain background.")
+            return None
+
+    def _draw_menu_background(self, screen: pygame.Surface):
+        if self.menu_background is not None:
+            screen.blit(self.menu_background, (0, 0))
+        else:
+            screen.fill(self.COLORS["background"])
 
     def render(self, screen: pygame.Surface, state: GameState):
         self._draw_board(screen)
@@ -43,13 +62,7 @@ class GUIRenderer:
         self._draw_labels(screen)
 
     def render_menu(self, screen: pygame.Surface):
-        # Load and draw background image
-        try:
-            bg = pygame.image.load(_resource_path("assets/menu_background.webp"))
-            bg = pygame.transform.scale(bg, (self.screen_width, self.screen_height))
-            screen.blit(bg, (0, 0))
-        except FileNotFoundError:
-            screen.fill(self.COLORS["background"])  # Fallback if image missing
+        self._draw_menu_background(screen)
 
         # Draw title text
         title = self.game_over_font.render("Chess 2", True, self.COLORS["text"])
@@ -89,13 +102,7 @@ class GUIRenderer:
         screen.blit(rules_text, rules_text.get_rect(center=rules_rect.center))
 
     def render_rules(self, screen: pygame.Surface):
-        # Load and draw background image (same as menu)
-        try:
-            bg = pygame.image.load(_resource_path("assets/menu_background.webp"))
-            bg = pygame.transform.scale(bg, (self.screen_width, self.screen_height))
-            screen.blit(bg, (0, 0))
-        except FileNotFoundError:
-            screen.fill(self.COLORS["background"])  # Fallback if image missing
+        self._draw_menu_background(screen)
 
         # Add semi-transparent white overlay for better readability
         overlay = pygame.Surface(

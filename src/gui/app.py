@@ -28,7 +28,11 @@ logging.basicConfig(
 class ChessApp:
     def __init__(self, width: int = 800, height: int = 800):
         pygame.init()
-        pygame.mixer.init()
+        try:
+            pygame.mixer.init()
+        except Exception as e:
+            # No audio device (common in browsers before a user gesture).
+            logging.warning(f"Audio unavailable, continuing without sound: {e}")
         self.screen = pygame.display.set_mode((width, height))
         pygame.display.set_caption("Chess 2")
         self.clock = pygame.time.Clock()
@@ -44,19 +48,25 @@ class ChessApp:
 
     def _load_assets(self):
         """Load audio assets. Called after first event loop yield so pygbag VFS is ready."""
-        try:
-            self.sounds = {
-                "move": pygame.mixer.Sound(_resource_path("assets/sounds/move.ogg")),
-                "capture": pygame.mixer.Sound(_resource_path("assets/sounds/capture.ogg")),
-                "castle": pygame.mixer.Sound(_resource_path("assets/sounds/castle.ogg")),
-                "check": pygame.mixer.Sound(_resource_path("assets/sounds/check.ogg")),
-                "checkmate": pygame.mixer.Sound(
-                    _resource_path("assets/sounds/checkmate.ogg")
-                ),
-            }
-        except Exception as e:
-            logging.warning(f"Could not load sounds: {e}")
+        for name in ("move", "capture", "castle", "check", "checkmate"):
+            last_error = None
+            # pygbag transcodes .ogg to .mp3 when packaging for the web, so try both.
+            for ext in ("ogg", "mp3"):
+                try:
+                    path = _resource_path(f"assets/sounds/{name}.{ext}")
+                    self.sounds[name] = pygame.mixer.Sound(path)
+                    break
+                except Exception as e:
+                    last_error = e
+            else:
+                logging.warning(f"Could not load sound '{name}': {last_error}")
         self.assets_loaded = True
+
+    def _play(self, name: str):
+        """Play a sound effect if it loaded successfully."""
+        sound = self.sounds.get(name)
+        if sound is not None:
+            sound.play()
 
     async def run(self):
         logging.info("Starting Chess 2 app")
@@ -108,7 +118,7 @@ class ChessApp:
                 self.game_mode = "ai"
                 self.in_menu = False
                 self.in_rules = False
-                if self.sounds: self.sounds["move"].play()
+                self._play("move")
 
             mp_button_y = ai_button_y + 100
             if (
@@ -118,7 +128,7 @@ class ChessApp:
                 self.game_mode = "local"
                 self.in_menu = False
                 self.in_rules = False
-                if self.sounds: self.sounds["move"].play()
+                self._play("move")
 
             rules_button_y = mp_button_y + 100
             if (
@@ -127,7 +137,7 @@ class ChessApp:
             ):
                 self.in_menu = False
                 self.in_rules = True
-                if self.sounds: self.sounds["move"].play()
+                self._play("move")
 
     def _handle_rules_events(self, event: pygame.event.Event):
         if event.type == MOUSEBUTTONDOWN and event.button == 1:
@@ -143,7 +153,7 @@ class ChessApp:
             if back_rect.collidepoint(x, y):
                 self.in_rules = False
                 self.in_menu = True
-                if self.sounds: self.sounds["move"].play()
+                self._play("move")
 
     def _handle_game_events(self, event: pygame.event.Event):
         if event.type == MOUSEBUTTONDOWN and event.button == 1:
@@ -257,12 +267,12 @@ class ChessApp:
         if not self.sounds:
             return
         if self.state.game_over:
-            self.sounds["checkmate"].play()
+            self._play("checkmate")
             return
 
         in_check = self.state.board.is_in_check(self.state.is_white_turn)
         if in_check:
-            self.sounds["check"].play()
+            self._play("check")
             return
 
         # Check for special move types
@@ -271,16 +281,16 @@ class ChessApp:
 
         # Check for castling
         if piece and piece.type == PieceType.KING and abs(end[1] - start[1]) == 2:
-            self.sounds["castle"].play()
+            self._play("castle")
             return
 
         # Check for capture
         if self.state.last_capture:
-            self.sounds["capture"].play()
+            self._play("capture")
             return
 
         # Default move sound
-        if self.sounds: self.sounds["move"].play()
+        self._play("move")
 
 
 async def main():

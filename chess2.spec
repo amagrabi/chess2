@@ -12,8 +12,8 @@ a = Analysis(
     datas=[
         ('src/assets/**/*', 'assets/'),
         ('src/assets/FreeSerif.ttf', 'assets/'),
-        ('src/assets/menu_background.webp', 'assets/'),
-        ('src/assets/sounds/*.mp3', 'assets/sounds/')
+        ('src/assets/menu_background.jpg', 'assets/'),
+        ('src/assets/sounds/*.ogg', 'assets/sounds/')
     ],
     hiddenimports=['pygame', 'game', 'core', 'utils'],
     hookspath=[],
