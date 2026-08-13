@@ -14,7 +14,7 @@ WINDOW_HEIGHT = BOARD_SIZE
 
 DIFFICULTY_LABELS = (("easy", "Easy"), ("medium", "Medium"), ("hard", "Hard"))
 
-TAGLINE = "Chess, but with the last hundred years of patches applied"
+TAGLINE = "A balance patch, a hundred years overdue"
 
 # The menu is set over a soft painted backdrop, so it borrows the language of an
 # engraved title page: wide-tracked lettering, hairline rules, and outlined
