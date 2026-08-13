@@ -22,7 +22,12 @@ The first load takes a moment while the Python runtime downloads.
 
 Pick Easy, Medium or Hard for the computer opponent. Easy is the original
 move-at-random opponent; Medium and Hard actually search ahead. Take back a move
-with the Undo button or the `U` key.
+with the Undo button or the `U` key. After a checkmate, start again with the
+Rematch button or the `R` key.
+
+The panel beside the board keeps the move list, the pieces that are out of play
+and who is ahead on material. The spy is the pawn in the hat on h2/h7; the
+squares it can convert are ringed in teal rather than marked as captures.
 
 ## Installation
 

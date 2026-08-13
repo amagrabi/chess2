@@ -68,6 +68,45 @@ def test_bishop_cannot_capture_queen():
     assert (4, 4) not in moves  # Bishop shouldn't be able to capture queen
 
 
+def test_capture_is_recorded_and_undone(fresh_state):
+    """Captured pieces feed the panel tray and come back on undo"""
+    state = fresh_state
+
+    assert state.make_move((6, 4), (4, 4))  # white pawn to e4
+    assert state.make_move((1, 3), (3, 3))  # black pawn to d5
+    assert state.captured == []
+    assert state.material_balance() == 0
+
+    assert state.make_move((4, 4), (3, 3))  # white pawn takes d5
+    assert state.last_move_kind == "capture"
+    assert state.captured == [(PieceType.PAWN, False)]
+    assert state.losses(False) == [PieceType.PAWN]
+    assert state.losses(True) == []
+    assert state.material_balance() == 100
+
+    assert state.undo()
+    assert state.captured == []
+    assert state.material_balance() == 0
+    assert state.last_move_kind == "quiet"
+
+
+def test_spy_conversion_only_costs_the_spy(fresh_state):
+    """A converted piece changes sides; the spy is the one that leaves play"""
+    state = fresh_state
+    board = state.board
+
+    board.board[4][6] = Piece(PieceType.ROOK, False)  # black rook on g4
+    before = state.material_balance()
+
+    assert state.make_move((6, 7), (4, 6))  # white spy converts it
+    assert state.last_move_kind == "convert"
+    assert board.get_piece((4, 6)).is_white
+    assert board.get_piece((6, 7)) is None
+    # The spy died, the rook swapped sides: white is up two rooks less one spy.
+    assert state.captured == [(PieceType.SPY, True)]
+    assert state.material_balance() == before + 1000 - 350
+
+
 def test_stalemate_switches_turn(fresh_state):
     """Test stalemate switches turn instead of ending game"""
     state = fresh_state
@@ -91,3 +130,5 @@ def test_stalemate_switches_turn(fresh_state):
     assert state.is_white_turn
     assert not state.game_over
     assert state.game_result is None
+    # Flagged so the GUI can announce it instead of white seeming to move twice.
+    assert state.stalemate_skipped

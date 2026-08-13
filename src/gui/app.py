@@ -6,6 +6,7 @@ from typing import Optional, Tuple
 import pygame
 from pygame.locals import (
     K_ESCAPE,
+    K_r,
     K_u,
     KEYDOWN,
     MOUSEBUTTONDOWN,
@@ -14,10 +15,17 @@ from pygame.locals import (
     QUIT,
 )
 
-from core.piece import PieceType
+from core.piece import Piece, PieceType
 from game import ai
 from game.state import GameState
-from gui.renderer import WINDOW_HEIGHT, WINDOW_WIDTH, GUIRenderer
+from gui.renderer import (
+    WINDOW_HEIGHT,
+    WINDOW_WIDTH,
+    GUIRenderer,
+    MoveAnimation,
+    Notice,
+    SquareEffect,
+)
 from utils import _resource_path
 
 logging.basicConfig(
@@ -49,6 +57,16 @@ class ChessApp:
         self.pending_promotion: Optional[Tuple[Tuple[int, int], Tuple[int, int]]] = None
         # House-rules overlay shown over the board, without leaving the game.
         self.rules_overlay = False
+        # Pieces currently sliding to their new squares, and the burst that
+        # marks a spy conversion.
+        self.anim: Optional[MoveAnimation] = None
+        self.effect: Optional[SquareEffect] = None
+        # Brief banner over the board when a house rule fires on its own.
+        self.notice: Optional[Notice] = None
+        # Move sounds wait for the slide to land, so the thud matches the piece
+        # arriving rather than leading it.
+        self.pending_sound: Optional[str] = None
+        self._hand_cursor = False
 
     def _load_assets(self):
         """Load audio assets. Called after first event loop yield so pygbag VFS is ready."""
@@ -81,6 +99,8 @@ class ChessApp:
         self._load_assets()
         while True:
             self._handle_events()
+            self._tick_animation()
+            self._update_cursor()
             self._update_display()
 
             if self._computer_to_move():
@@ -88,6 +108,55 @@ class ChessApp:
 
             self.clock.tick(60)
             await asyncio.sleep(0)
+
+    def _tick_animation(self):
+        """Retire finished animations and release the sound they were holding."""
+        if self.anim is not None and self.anim.done:
+            self.anim = None
+            if self.pending_sound:
+                self._play(self.pending_sound)
+                self.pending_sound = None
+        if self.effect is not None and self.effect.done:
+            self.effect = None
+        if self.notice is not None and self.notice.done:
+            self.notice = None
+
+    def _animating(self) -> bool:
+        return self.anim is not None and not self.anim.done
+
+    def _clickable_rects(self) -> list:
+        """Every button on the screen right now, for the pointer cursor."""
+        renderer = self.renderer
+        if self.in_menu:
+            return list(renderer.menu_rects().values())
+        if self.in_rules:
+            return [renderer.rules_back_rect()]
+        if self.rules_overlay:
+            return [renderer.rules_overlay_close_rect()]
+        if self.pending_promotion:
+            return [rect for _, rect in renderer.promotion_rects()]
+
+        rects = list(renderer.panel_button_rects().values())
+        if self.state.game_over:
+            rects += list(renderer.game_over_rects().values())
+        return rects
+
+    def _update_cursor(self):
+        """Show a hand over anything clickable."""
+        pos = pygame.mouse.get_pos()
+        hand = any(rect.collidepoint(pos) for rect in self._clickable_rects())
+        if hand == self._hand_cursor:
+            return
+        self._hand_cursor = hand
+        try:
+            pygame.mouse.set_cursor(
+                pygame.SYSTEM_CURSOR_HAND if hand else pygame.SYSTEM_CURSOR_ARROW
+            )
+        except Exception as e:
+            # Some SDL builds ship without system cursors; the game is fine
+            # without them, so stop asking.
+            logging.warning(f"System cursors unavailable: {e}")
+            self._update_cursor = lambda: None
 
     # ---------------------------------------------------------------- events
 
@@ -106,13 +175,19 @@ class ChessApp:
                     self._return_to_menu()
                 continue
 
+            in_game = not self.in_menu and not self.in_rules
+
+            if event.type == KEYDOWN and event.key == K_u and in_game:
+                self._undo()
+                continue
+
             if (
                 event.type == KEYDOWN
-                and event.key == K_u
-                and not self.in_menu
-                and not self.in_rules
+                and event.key == K_r
+                and in_game
+                and self.state.game_over
             ):
-                self._undo()
+                self._rematch()
                 continue
 
             if self.in_menu:
@@ -124,6 +199,8 @@ class ChessApp:
             elif self.pending_promotion:
                 self._handle_promotion_events(event)
             else:
+                if self.state.game_over:
+                    self._handle_game_over_events(event)
                 if not self.computer_thinking:
                     self._handle_panel_events(event)
                 if not self.state.game_over and not self.computer_thinking:
@@ -131,11 +208,26 @@ class ChessApp:
 
     def _return_to_menu(self):
         logging.info("Returning to menu")
+        self._new_game()
+        self.in_menu = True
+        self.in_rules = False
+
+    def _new_game(self):
+        """Clear the board and everything in flight, keeping mode and difficulty."""
         self.state.reset()
         self.pending_promotion = None
         self.rules_overlay = False
-        self.in_menu = True
-        self.in_rules = False
+        self.anim = None
+        self.effect = None
+        self.notice = None
+        self.pending_sound = None
+
+    def _rematch(self):
+        if self.computer_thinking:
+            return
+        logging.info("Starting a rematch")
+        self._new_game()
+        self._play("move")
 
     def _handle_menu_events(self, event: pygame.event.Event):
         if event.type != MOUSEBUTTONDOWN or event.button != 1:
@@ -180,6 +272,16 @@ class ChessApp:
                 self.rules_overlay = False
                 self._play("move")
 
+    def _handle_game_over_events(self, event: pygame.event.Event):
+        """Rematch or leave, without having to guess at a keyboard shortcut."""
+        if event.type != MOUSEBUTTONDOWN or event.button != 1:
+            return
+        buttons = self.renderer.game_over_rects()
+        if buttons["rematch"].collidepoint(event.pos):
+            self._rematch()
+        elif buttons["menu"].collidepoint(event.pos):
+            self._return_to_menu()
+
     def _handle_panel_events(self, event: pygame.event.Event):
         if event.type != MOUSEBUTTONDOWN or event.button != 1:
             return
@@ -203,8 +305,7 @@ class ChessApp:
             if rect.collidepoint(pos):
                 start, end = self.pending_promotion
                 self.pending_promotion = None
-                if self.state.make_move(start, end, promotion=piece_type):
-                    self._play("promote")
+                self._play_move(start, end, promotion=piece_type)
                 return
 
     def _undo(self):
@@ -213,6 +314,10 @@ class ChessApp:
             return
 
         self.pending_promotion = None
+        self.anim = None
+        self.effect = None
+        self.notice = None
+        self.pending_sound = None
         self.state.undo()
         # Undo the computer's reply as well, so it stays the player's turn.
         if self.game_mode == "ai" and not self.state.is_white_turn:
@@ -283,14 +388,18 @@ class ChessApp:
             and self.state.selected_piece
             and end_square in self.state.possible_moves
         ):
-            self._attempt_move(self.state.selected_piece, end_square)
+            # The player has already dragged the piece there; sliding it again
+            # from the square it left would look like a stutter.
+            self._attempt_move(self.state.selected_piece, end_square, animate=False)
 
         self.state.dragging = False
         self.state.drag_start = None
         self.state.selected_piece = None
         self.state.possible_moves = set()
 
-    def _attempt_move(self, start: Tuple[int, int], end: Tuple[int, int]):
+    def _attempt_move(
+        self, start: Tuple[int, int], end: Tuple[int, int], animate: bool = True
+    ):
         """Play a human move, pausing for a promotion choice when needed."""
         if self.state.is_promotion(start, end):
             self.state.dragging = False
@@ -299,8 +408,50 @@ class ChessApp:
             self.pending_promotion = (start, end)
             return
 
-        if self.state.make_move(start, end):
-            self._play_move_sound()
+        self._play_move(start, end, animate=animate)
+
+    def _play_move(
+        self,
+        start: Tuple[int, int],
+        end: Tuple[int, int],
+        promotion: PieceType = PieceType.QUEEN,
+        animate: bool = True,
+    ) -> bool:
+        """Make a move and start the animation, effect and sound that go with it."""
+        mover = self.state.board.get_piece(start)
+        if not self.state.make_move(start, end, promotion=promotion):
+            return False
+
+        segments = []
+        if animate and mover is not None:
+            landed = self.state.board.get_piece(end)
+            # A spy dies converting, so slide the spy in rather than the piece
+            # it left behind on the square.
+            drawn = mover if self.state.last_move_kind == "convert" else landed or mover
+            segments.append((Piece(drawn.type, drawn.is_white), start, end))
+            if self.state.last_move_kind == "castle":
+                row = start[0]
+                rook_from = (row, 7 if end[1] > start[1] else 0)
+                rook_to = (row, end[1] - 1 if end[1] > start[1] else end[1] + 1)
+                segments.append(
+                    (Piece(PieceType.ROOK, mover.is_white), rook_from, rook_to)
+                )
+
+        self.anim = MoveAnimation(segments) if segments else None
+        if self.state.last_move_kind == "convert":
+            self.effect = SquareEffect(end)
+        if self.state.stalemate_skipped:
+            # The opponent had no legal move, so the house rule handed the turn
+            # straight back. Say so, or it reads as the same side moving twice.
+            side = "White" if self.state.is_white_turn else "Black"
+            self.notice = Notice(f"Stalemate - {side} moves again")
+
+        sound = self._move_sound()
+        if self.anim is not None:
+            self.pending_sound = sound
+        else:
+            self._play(sound)
+        return True
 
     # ------------------------------------------------------------- computer
 
@@ -313,6 +464,9 @@ class ChessApp:
             and not self.state.is_white_turn
             and not self.pending_promotion
             and not self.rules_overlay
+            # The search blocks the loop between yields, which would freeze the
+            # player's piece in mid-slide. Let it land first.
+            and not self._animating()
         )
 
     async def _make_computer_move(self):
@@ -328,8 +482,7 @@ class ChessApp:
             move = None
 
         if move and not self.in_menu:
-            self.state.make_move(move[0], move[1], promotion=PieceType.QUEEN)
-            self._play_move_sound()
+            self._play_move(move[0], move[1], promotion=PieceType.QUEEN)
 
         self.computer_thinking = False
 
@@ -349,33 +502,29 @@ class ChessApp:
                 thinking=self.computer_thinking,
                 promoting=self.pending_promotion is not None,
                 showing_rules=self.rules_overlay,
+                anim=self.anim,
+                effect=self.effect,
+                notice=self.notice,
             )
         pygame.display.flip()
 
-    def _play_move_sound(self):
-        """Determine and play appropriate sound effect for the last move"""
-        if not self.sounds:
-            return
+    def _move_sound(self) -> str:
+        """Name the sound the last move earned.
+
+        Ending the game and giving check outrank what the move itself did, so a
+        mating capture is heard as a mate.
+        """
         if self.state.game_over:
-            self._play("checkmate")
-            return
-
+            return "checkmate"
         if self.state.board.is_in_check(self.state.is_white_turn):
-            self._play("check")
-            return
-
-        if not self.state.last_move:
-            return
-
-        start, end = self.state.last_move
-        piece = self.state.board.get_piece(end)
-
-        if piece and piece.type == PieceType.KING and abs(end[1] - start[1]) == 2:
-            self._play("castle")
-        elif self.state.last_capture:
-            self._play("capture")
-        else:
-            self._play("move")
+            return "check"
+        return {
+            "promote": "promote",
+            "castle": "castle",
+            "capture": "capture",
+            # A conversion is not a capture, but it is the closest sound we have.
+            "convert": "capture",
+        }.get(self.state.last_move_kind, "move")
 
 
 async def main():

@@ -12,6 +12,22 @@ class PieceType(Enum):
     SPY = auto()
 
 
+# Rough worth of each piece in centipawns, tuned for Chess 2 rather than normal
+# chess: knights jump in every direction so they are worth more, bishops cannot
+# capture queens so they are worth less, and the spy swings material by twice
+# its target's value. Shared by the AI search and the material counter in the
+# panel, so both agree on who is ahead. The king is deliberately absent -- it is
+# never material, and the search adds its own sentinel value.
+MATERIAL_VALUES = {
+    PieceType.PAWN: 100,
+    PieceType.KNIGHT: 380,
+    PieceType.BISHOP: 290,
+    PieceType.ROOK: 500,
+    PieceType.QUEEN: 900,
+    PieceType.SPY: 350,
+}
+
+
 @dataclass
 class Piece:
     type: PieceType
@@ -25,6 +41,10 @@ class Piece:
         The outlined white glyphs (♙♘♗) render as thin, washed-out shapes; a
         filled silhouette tinted white and given a dark outline reads far
         better on the board.
+
+        The spy borrows the pawn silhouette -- Unicode has no spy, and the
+        crosshair used before read as a UI marker rather than a piece. The
+        renderer stamps a hat on top of it, which is what tells the two apart.
         """
         glyphs = {
             PieceType.PAWN: "♟",
@@ -33,7 +53,7 @@ class Piece:
             PieceType.ROOK: "♜",
             PieceType.QUEEN: "♛",
             PieceType.KING: "♚",
-            PieceType.SPY: "⌖",
+            PieceType.SPY: "♟",
         }
         return glyphs[self.type]
 

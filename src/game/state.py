@@ -3,7 +3,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Set, Tuple
 
 from core.board import ChessBoard
-from core.piece import Piece, PieceType
+from core.piece import MATERIAL_VALUES, Piece, PieceType
 
 PIECE_LETTERS = {
     PieceType.KING: "K",
@@ -42,6 +42,18 @@ class GameState:
         self.dragging = False
         self.drag_start: Optional[Tuple[int, int]] = None
         self.last_capture = False
+        # What the last move did, one of quiet/capture/castle/convert/promote.
+        # The GUI uses it to pick a sound and an effect without re-deriving it
+        # from the board.
+        self.last_move_kind = "quiet"
+        # Pieces that have left play, as (type, was_white). A converted piece is
+        # still on the board under new colours, so only the spy that died doing
+        # it is listed.
+        self.captured: List[Tuple[PieceType, bool]] = []
+        # Set when the last move left the opponent with nothing to play and the
+        # house rule handed the turn straight back. Worth announcing: otherwise
+        # it looks like the other side simply moved twice.
+        self.stalemate_skipped = False
         self.move_log: List[str] = []
         self._undo_stack: List[dict] = []
 
@@ -84,8 +96,27 @@ class GameState:
 
         piece_type = piece.type
         promoted = piece_type == PieceType.PAWN and end[0] in (0, 7)
+        castled = piece_type == PieceType.KING and abs(end[1] - start[1]) == 2
+
+        if converted:
+            # The spy dies converting; the target merely changes sides.
+            self.captured.append((PieceType.SPY, piece.is_white))
+            self.last_move_kind = "convert"
+        else:
+            if self.last_capture and target_piece is not None:
+                self.captured.append((target_piece.type, target_piece.is_white))
+            self.last_move_kind = (
+                "promote"
+                if promoted
+                else "castle"
+                if castled
+                else "capture"
+                if self.last_capture
+                else "quiet"
+            )
 
         logging.debug(f"Making move from {start} to {end}")
+        self.stalemate_skipped = False
         self.board.apply_move(start, end, promotion)
         self.last_move = (start, end)
         self._update_game_status(piece)
@@ -138,6 +169,9 @@ class GameState:
                 "game_result": self.game_result,
                 "last_move": self.last_move,
                 "last_capture": self.last_capture,
+                "last_move_kind": self.last_move_kind,
+                "captured": list(self.captured),
+                "stalemate_skipped": self.stalemate_skipped,
                 "position_history": dict(self.position_history),
                 "move_count": len(self.move_log),
             }
@@ -158,6 +192,9 @@ class GameState:
         self.game_result = snap["game_result"]
         self.last_move = snap["last_move"]
         self.last_capture = snap["last_capture"]
+        self.last_move_kind = snap["last_move_kind"]
+        self.captured = list(snap["captured"])
+        self.stalemate_skipped = snap["stalemate_skipped"]
         self.position_history = defaultdict(int, snap["position_history"])
         del self.move_log[snap["move_count"] :]
 
@@ -183,6 +220,7 @@ class GameState:
                 )
             else:
                 # Stalemate - continue game without ending
+                self.stalemate_skipped = True
                 self.is_white_turn = not self.is_white_turn
 
         # Threefold repetition
@@ -215,6 +253,29 @@ class GameState:
             self.board.board[move[0]][move[1]] = original_piece
 
         return legal_moves
+
+    # --------------------------------------------------------------- material
+
+    def material_balance(self) -> int:
+        """Centipawns of material white is ahead by, negative if behind.
+
+        Counted from the pieces on the board rather than from the capture list,
+        so a converted piece counts for whoever owns it now.
+        """
+        score = 0
+        for row in self.board.board:
+            for piece in row:
+                value = MATERIAL_VALUES.get(piece.type) if piece else None
+                if value is not None:
+                    score += value if piece.is_white else -value
+        return score
+
+    def losses(self, is_white: bool) -> List[PieceType]:
+        """Pieces of one colour that have left play, best first."""
+        return sorted(
+            (t for t, was_white in self.captured if was_white == is_white),
+            key=lambda t: -MATERIAL_VALUES.get(t, 0),
+        )
 
     def _get_position_string(self) -> str:
         position = []

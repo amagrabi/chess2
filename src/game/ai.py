@@ -15,7 +15,7 @@ import random
 from typing import List, Optional, Tuple
 
 from core.board import ChessBoard
-from core.piece import PieceType
+from core.piece import MATERIAL_VALUES, PieceType
 
 EASY = "easy"
 MEDIUM = "medium"
@@ -23,15 +23,9 @@ HARD = "hard"
 
 DIFFICULTY_DEPTH = {EASY: 0, MEDIUM: 2, HARD: 3}
 
-PIECE_VALUES = {
-    PieceType.PAWN: 100,
-    PieceType.KNIGHT: 380,  # jumps in all directions here, so worth more
-    PieceType.BISHOP: 290,  # cannot capture queens, so worth less
-    PieceType.ROOK: 500,
-    PieceType.QUEEN: 900,
-    PieceType.SPY: 350,
-    PieceType.KING: 20000,
-}
+# The shared Chess 2 valuation, plus a sentinel for the king so that losing it
+# dominates every other term.
+PIECE_VALUES = {**MATERIAL_VALUES, PieceType.KING: 20000}
 
 # Small nudge toward the centre, applied to every piece.
 CENTRE_BONUS = [
