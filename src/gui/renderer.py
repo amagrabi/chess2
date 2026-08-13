@@ -16,6 +16,18 @@ DIFFICULTY_LABELS = (("easy", "Easy"), ("medium", "Medium"), ("hard", "Hard"))
 
 TAGLINE = "Chess, but with the last hundred years of patches applied"
 
+# The menu is set over a soft painted backdrop, so it borrows the language of an
+# engraved title page: wide-tracked lettering, hairline rules, and outlined
+# plates instead of filled slabs. Filled buttons read as UI pasted onto the
+# artwork; the in-game panel keeps them, because there they sit on dark wood.
+MENU_PLATE_WIDTH = 396
+MENU_PLAY_Y = 322
+MENU_TRACKING = 3
+MENU_INK = (52, 38, 27)
+MENU_INK_SOFT = (104, 80, 58)
+MENU_LINE = (128, 100, 74)
+MENU_PARCHMENT = (250, 244, 231)
+
 # Condensed for the in-game panel; the full wording lives on the rules screen.
 SHORT_RULES = (
     "Knights jump in any direction",
@@ -85,7 +97,6 @@ class GUIRenderer:
         # Everything is set in the bundled serif rather than pygame's built-in
         # freesansbold, which looks generic next to the painted backdrop.
         self.font = self._load_font(72)  # chess glyphs
-        self.title_font = self._load_font(96, bold=True)
         self.game_over_font = self._load_font(64, bold=True)
         self.heading_font = self._load_font(34, bold=True)
         self.info_font = self._load_font(32)
@@ -96,8 +107,19 @@ class GUIRenderer:
         # different program next to the rest of the interface.
         self.list_font = self._load_font(23)
         self.label_font = self._load_font(20)
+        # The menu has its own type: unbolded, so that tracking rather than
+        # weight does the work of looking deliberate.
+        self.menu_title_font = self._load_font(94)
+        self.menu_label_font = self._load_font(29)
+        self.menu_word_font = self._load_font(26)
+        self.menu_small_font = self._load_font(23)
+        self.rules_title_font = self._load_font(66)
+        self.menu_tagline_font = self._load_font(24)
+        self.menu_tagline_font.set_italic(True)
 
         self.menu_background = self._load_menu_background()
+        self._menu_scrim = None
+        self._tracked_cache = {}
         # Pieces are redrawn every frame; rendering the glyph and its outline
         # each time is wasteful, so cache one surface per (type, colour, size).
         self._piece_cache = {}
@@ -251,29 +273,42 @@ class GUIRenderer:
     # ---------------------------------------------------------------- geometry
 
     def menu_rects(self) -> Dict[str, pygame.Rect]:
-        """Button rectangles for the menu, shared by drawing and hit-testing."""
-        centre_x = self.screen_width // 2
-        top = self.screen_height // 2 - 110
-        rects = {
-            "ai": pygame.Rect(0, 0, 320, 60),
-            "local": pygame.Rect(0, 0, 320, 60),
-            "rules": pygame.Rect(0, 0, 320, 60),
-        }
-        rects["ai"].center = (centre_x, top)
-        rects["local"].center = (centre_x, top + 150)
-        rects["rules"].center = (centre_x, top + 225)
+        """Menu hit boxes, shared by drawing and hit-testing.
 
-        # Difficulty chips sit directly under the "vs. Computer" button.
-        chip_width, gap = 100, 8
-        total = len(DIFFICULTY_LABELS) * chip_width + (len(DIFFICULTY_LABELS) - 1) * gap
-        x = centre_x - total // 2
-        for key, _ in DIFFICULTY_LABELS:
-            rects[key] = pygame.Rect(x, top + 45, chip_width, 38)
-            x += chip_width + gap
+        Three tiers rather than a stack of identical bars: a wide plate to
+        start a game, the difficulty set as words beneath it, and lighter
+        entries below for the things you pick once.
+        """
+        centre_x = self.screen_width // 2
+        rects = {
+            "ai": pygame.Rect(0, 0, MENU_PLATE_WIDTH, 68),
+            "local": pygame.Rect(0, 0, MENU_PLATE_WIDTH, 56),
+            "rules": pygame.Rect(0, 0, 220, 46),
+        }
+        rects["ai"].center = (centre_x, MENU_PLAY_Y)
+        rects["local"].center = (centre_x, MENU_PLAY_Y + 132)
+        rects["rules"].center = (centre_x, MENU_PLAY_Y + 200)
+
+        # The difficulties read as one line of words, so their boxes are only as
+        # wide as the words themselves plus a little slack for the pointer.
+        widths = [
+            self._tracked_size(label, self.menu_small_font, 2)[0]
+            for _, label in DIFFICULTY_LABELS
+        ]
+        gap = 46
+        x = centre_x - (sum(widths) + gap * (len(widths) - 1)) // 2
+        for (key, _), width in zip(DIFFICULTY_LABELS, widths):
+            box = pygame.Rect(x - 10, 0, width + 20, 40)
+            box.centery = MENU_PLAY_Y + 66
+            rects[key] = box
+            x += width + gap
         return rects
 
     def rules_back_rect(self) -> pygame.Rect:
-        return pygame.Rect(20, self.screen_height - 70, 200, 50)
+        """Centred under the page, where the eye lands after reading it."""
+        rect = pygame.Rect(0, 0, 200, 48)
+        rect.center = (self.screen_width // 2, self.screen_height - 56)
+        return rect
 
     def panel_button_rects(self) -> Dict[str, pygame.Rect]:
         x = self.board_size + 24
@@ -316,29 +351,157 @@ class GUIRenderer:
             return None
         return (y // self.square_size, x // self.square_size)
 
-    # ------------------------------------------------------------------ menu
+    # ------------------------------------------------------- menu typography
 
-    def _draw_title(
-        self, screen: pygame.Surface, text: str, centre_y: int, light: bool = False
-    ):
-        """Serif title with a soft drop shadow.
+    def _tracked(
+        self, text: str, font: pygame.font.Font, colour, tracking: int
+    ) -> pygame.Surface:
+        """Render text with extra space between letters.
 
-        `light` picks cream lettering for dark backdrops. The previous version
-        offset a light copy behind dark lettering on every screen, which over
-        the dimmed rules overlay read as a misprint rather than an emboss.
+        Tracking is what separates lettering that looks set from lettering that
+        looks typed, and pygame has no letter-spacing of its own -- so the
+        glyphs are placed one at a time. Cached, since the menu redraws every
+        frame.
         """
-        centre_x = self.screen_width // 2
-        body_colour = (247, 240, 226) if light else (38, 27, 20)
-        shadow_colour = (18, 12, 8) if light else (86, 62, 40)
+        key = (text, id(font), colour, tracking)
+        cached = self._tracked_cache.get(key)
+        if cached is not None:
+            return cached
 
-        shadow = self.title_font.render(text, True, shadow_colour)
-        shadow.set_alpha(110)
-        # Two offsets, so the shadow falls off instead of ending in a hard edge.
-        for dx, dy in ((2, 3), (4, 6)):
-            screen.blit(shadow, shadow.get_rect(center=(centre_x + dx, centre_y + dy)))
+        glyphs = [(font.render(ch, True, colour), font.size(ch)[0]) for ch in text]
+        width = sum(advance for _, advance in glyphs) + tracking * max(len(text) - 1, 0)
+        surface = pygame.Surface((width, font.get_height()), pygame.SRCALPHA)
+        x = 0
+        for glyph, advance in glyphs:
+            surface.blit(glyph, (x, 0))
+            x += advance + tracking
 
-        body = self.title_font.render(text, True, body_colour)
-        screen.blit(body, body.get_rect(center=(centre_x, centre_y)))
+        self._tracked_cache[key] = surface
+        return surface
+
+    def _tracked_size(
+        self, text: str, font: pygame.font.Font, tracking: int
+    ) -> Tuple[int, int]:
+        return (
+            sum(font.size(ch)[0] for ch in text) + tracking * max(len(text) - 1, 0),
+            font.get_height(),
+        )
+
+    def _blit_tracked(
+        self,
+        screen: pygame.Surface,
+        text: str,
+        font: pygame.font.Font,
+        colour,
+        centre: Tuple[int, int],
+        tracking: int = MENU_TRACKING,
+    ) -> pygame.Rect:
+        surface = self._tracked(text, font, colour, tracking)
+        rect = surface.get_rect(center=centre)
+        screen.blit(surface, rect)
+        return rect
+
+    def _draw_hairline(
+        self, screen: pygame.Surface, centre: Tuple[int, int], width: int, ornament=True
+    ):
+        """A thin rule, optionally parted in the middle by a small lozenge."""
+        cx, cy = centre
+        half = width // 2
+        gap = 14 if ornament else 0
+        for x0, x1 in ((cx - half, cx - gap), (cx + gap, cx + half)):
+            line = pygame.Surface((max(x1 - x0, 0), 1), pygame.SRCALPHA)
+            line.fill((*MENU_LINE, 150))
+            screen.blit(line, (x0, cy))
+        if ornament:
+            lozenge = pygame.Surface((10, 10), pygame.SRCALPHA)
+            pygame.draw.polygon(
+                lozenge, (*MENU_LINE, 190), ((5, 0), (10, 5), (5, 10), (0, 5))
+            )
+            screen.blit(lozenge, lozenge.get_rect(center=(cx, cy)))
+
+    def _menu_scrim_surface(self) -> pygame.Surface:
+        """A soft parchment veil behind the menu text, feathered on all sides.
+
+        The backdrop is busy in the middle, where the flowers and pieces are, so
+        the lettering needs something to sit on -- but a hard-edged card would
+        look pasted on. Both axes fade out, so there is no edge at all. Built
+        once and cached.
+        """
+        if self._menu_scrim is not None:
+            return self._menu_scrim
+
+        width, height = 760, 540
+        band = pygame.Surface((width, height), pygame.SRCALPHA)
+        peak = 176
+        for y in range(height):
+            # Fade from the vertical centre outwards.
+            distance = abs(y - height / 2) / (height / 2)
+            alpha = int(peak * max(0.0, 1 - distance**2))
+            pygame.draw.line(band, (*MENU_PARCHMENT, alpha), (0, y), (width, y))
+
+        mask = pygame.Surface((width, height), pygame.SRCALPHA)
+        for x in range(width):
+            distance = abs(x - width / 2) / (width / 2)
+            level = int(255 * max(0.0, 1 - distance**2))
+            pygame.draw.line(mask, (255, 255, 255, level), (x, 0), (x, height))
+        band.blit(mask, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+
+        self._menu_scrim = band
+        return band
+
+    def _draw_plate(
+        self,
+        screen: pygame.Surface,
+        rect: pygame.Rect,
+        label: str,
+        font: pygame.font.Font,
+        weight: int = 2,
+        light: bool = False,
+    ):
+        """An outlined plate: ink border, parchment wash, tracked lettering.
+
+        Everything is drawn onto one translucent surface so the rules read as
+        ink on paper. Drawn straight onto the screen at full opacity they looked
+        like vector strokes laid over the painting.
+
+        `light` inverts it for the dimmed backdrop of the rules page, where dark
+        ink would disappear.
+        """
+        hovered = rect.collidepoint(self._mouse)
+
+        wash = (28, 20, 15) if light else MENU_PARCHMENT
+        edge = MENU_PARCHMENT if light else MENU_INK
+        edge_soft = (196, 172, 140) if light else MENU_LINE
+        ink = (247, 241, 228) if light else MENU_INK
+        ink_soft = (222, 208, 184) if light else MENU_INK_SOFT
+
+        plate = pygame.Surface(rect.size, pygame.SRCALPHA)
+        bounds = plate.get_rect()
+        pygame.draw.rect(
+            plate,
+            (*wash, 158) if hovered else (*wash, 96),
+            bounds,
+            border_radius=3,
+        )
+        pygame.draw.rect(
+            plate,
+            (*edge, 225) if hovered else (*edge_soft, 175),
+            bounds,
+            width=weight + 1 if hovered else weight,
+            border_radius=3,
+        )
+        # A second line inside the first: the double rule of an engraved plate,
+        # and what keeps the outline from reading as a plain box.
+        pygame.draw.rect(
+            plate, (*edge_soft, 105), bounds.inflate(-10, -10), width=1, border_radius=2
+        )
+        screen.blit(plate, rect.topleft)
+
+        self._blit_tracked(
+            screen, label, font, ink if hovered else ink_soft, rect.center
+        )
+
+    # ------------------------------------------------------------------ menu
 
     def _draw_button(
         self,
@@ -371,33 +534,58 @@ class GUIRenderer:
     def render_menu(self, screen: pygame.Surface, difficulty: str = "medium"):
         self._mouse = pygame.mouse.get_pos()
         self._draw_menu_background(screen)
+        centre_x = self.screen_width // 2
         rects = self.menu_rects()
 
-        # High enough that the tagline clears the first button.
-        title_y = self.screen_height // 5
-        self._draw_title(screen, "Chess 2", title_y)
-        tagline = self.body_font.render(TAGLINE, True, (96, 74, 54))
-        screen.blit(
-            tagline, tagline.get_rect(center=(self.screen_width // 2, title_y + 64))
+        scrim = self._menu_scrim_surface()
+        screen.blit(scrim, scrim.get_rect(center=(centre_x, 320)))
+
+        # Title block: tracked lettering between two rules, as a title page sets
+        # it. No drop shadow -- the old one left a grey ghost behind the letters.
+        self._blit_tracked(
+            screen, "Chess 2", self.menu_title_font, MENU_INK, (centre_x, 152), 10
+        )
+        self._draw_hairline(screen, (centre_x, 212), 300)
+        tagline = self.menu_tagline_font.render(TAGLINE, True, MENU_INK_SOFT)
+        screen.blit(tagline, tagline.get_rect(center=(centre_x, 242)))
+
+        self._draw_plate(
+            screen, rects["ai"], "Play vs. Computer", self.menu_label_font, weight=2
         )
 
-        self._draw_button(screen, rects["ai"], "Play vs. Computer", self.info_font)
+        # Difficulty as a line of words: the selected one inked and underlined,
+        # the others faded back. Three coloured chips added three more browns to
+        # a screen that did not need them.
         for key, label in DIFFICULTY_LABELS:
+            box = rects[key]
             selected = key == difficulty
-            self._draw_button(
-                screen,
-                rects[key],
-                label,
-                self.small_font,
-                colour=self.COLORS["button_active"]
-                if selected
-                else self.COLORS["button_disabled"],
-                text_colour=self.COLORS["white_piece"]
-                if selected
-                else self.COLORS["panel_muted"],
+            hovered = box.collidepoint(self._mouse)
+            colour = MENU_INK if selected or hovered else (146, 124, 100)
+            word = self._blit_tracked(
+                screen, label, self.menu_small_font, colour, box.center, 2
             )
-        self._draw_button(screen, rects["local"], "Local Multiplayer", self.info_font)
-        self._draw_button(screen, rects["rules"], "Rules", self.info_font)
+            if selected:
+                underline = pygame.Surface((word.width, 2), pygame.SRCALPHA)
+                underline.fill((*MENU_LINE, 210))
+                screen.blit(underline, (word.left, word.bottom - 4))
+
+        self._draw_plate(
+            screen, rects["local"], "Local Multiplayer", self.menu_word_font, weight=1
+        )
+
+        # Rules is a one-off, so it is lettering with a rule under it rather than
+        # a third plate competing with the two above.
+        rules_hovered = rects["rules"].collidepoint(self._mouse)
+        word = self._blit_tracked(
+            screen,
+            "Rules",
+            self.menu_word_font,
+            MENU_INK if rules_hovered else MENU_INK_SOFT,
+            rects["rules"].center,
+        )
+        underline = pygame.Surface((word.width, 1), pygame.SRCALPHA)
+        underline.fill((*MENU_LINE, 220 if rules_hovered else 130))
+        screen.blit(underline, (word.left, word.bottom - 2))
 
     def render_rules(self, screen: pygame.Surface):
         self._mouse = pygame.mouse.get_pos()
@@ -413,25 +601,38 @@ class GUIRenderer:
         # width of the window.
         card = pygame.Rect(0, 0, min(self.screen_width - 180, 940), 0)
         card.centerx = self.screen_width // 2
-        card.top = 120
-        card.height = self.screen_height - card.top - 80
+        card.top = 116
+        card.height = self.screen_height - card.top - 104
 
+        # The same double rule as the menu plates, so this reads as a printed
+        # page from the same press rather than a dialog box.
         panel = pygame.Surface(card.size, pygame.SRCALPHA)
-        panel.fill((250, 244, 232, 240))
+        bounds = panel.get_rect()
+        panel.fill((250, 244, 232, 242))
+        pygame.draw.rect(panel, (*MENU_LINE, 190), bounds, width=1)
+        pygame.draw.rect(panel, (*MENU_LINE, 110), bounds.inflate(-12, -12), width=1)
         screen.blit(panel, card.topleft)
-        pygame.draw.rect(screen, (150, 122, 88), card, width=2, border_radius=4)
 
-        self._draw_title(screen, "House Rules", 62, light=True)
+        self._blit_tracked(
+            screen,
+            "House Rules",
+            self.rules_title_font,
+            (243, 234, 218),
+            (self.screen_width // 2, 62),
+            8,
+        )
 
         self._draw_rule_list(
             screen,
-            card.inflate(-88, -72),
+            card.inflate(-96, -80),
             self.body_font,
             (48, 36, 28),
             bullet_colour=(150, 110, 66),
         )
 
-        self._draw_button(screen, self.rules_back_rect(), "Back", self.info_font)
+        self._draw_plate(
+            screen, self.rules_back_rect(), "Back", self.menu_word_font, light=True
+        )
 
     def _draw_rule_list(
         self,
